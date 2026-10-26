@@ -209,11 +209,10 @@ svg.addEventListener("pointerdown", (event: PointerEvent) => {
   pointerStartY = event.clientY;
   panStartX = panX;
   panStartY = panY;
-  svg.setPointerCapture(event.pointerId);
   if (mapContent) mapContent.style.transition = "none";
 });
 
-svg.addEventListener("pointermove", (event: PointerEvent) => {
+window.addEventListener("pointermove", (event: PointerEvent) => {
   if (!isPanning) return;
   const dx = event.clientX - pointerStartX;
   const dy = event.clientY - pointerStartY;
@@ -230,8 +229,8 @@ function finishPan(): void {
   if (didPan) suppressNextClick = true;
 }
 
-svg.addEventListener("pointerup", finishPan);
-svg.addEventListener("pointercancel", finishPan);
+window.addEventListener("pointerup", finishPan);
+window.addEventListener("pointercancel", finishPan);
 svg.addEventListener("click", (event: MouseEvent) => {
   if (!suppressNextClick) return;
   suppressNextClick = false;
