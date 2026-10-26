@@ -125,6 +125,8 @@ function renderMap(): void {
   const countryLayer = document.createElementNS(svg.namespaceURI, "g");
   countryLayer.setAttribute("class", "country-layer");
   contentGroup.append(countryLayer);
+  // Attach the geometry before measuring paths so getBBox() returns real bounds.
+  svg.append(contentGroup);
 
   // Keep tiny standalone islands selectable even when their real geometry is
   // only a few screen pixels wide. These transparent hit targets do not alter
@@ -178,7 +180,6 @@ function renderMap(): void {
     hitTarget.setAttribute("tabindex", "0");
     hitTarget.setAttribute("role", "button");
     hitTarget.setAttribute("aria-label", `Select ${target.name}`);
-    hitTarget.append();
     hitTarget.addEventListener("click", () => selectCountry(target.id));
     hitTarget.addEventListener("keydown", (event) => {
       const keyboardEvent = event as KeyboardEvent;
@@ -190,7 +191,6 @@ function renderMap(): void {
     tinyTargetLayer.append(hitTarget);
   }
   contentGroup.append(tinyTargetLayer);
-  svg.append(contentGroup);
   applyViewTransform(false);
   loading.hidden = true;
   mapStatus.textContent = `${countryFeatures.length.toLocaleString()} country features loaded · click a territory`;
