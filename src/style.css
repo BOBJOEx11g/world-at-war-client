@@ -97,6 +97,6 @@ dialog p { color: #aab8c2; font-size: 13px; line-height: 1.6; }
 .biome-note { margin: 0 0 20px; color: #8194a3; font-size: 10px; line-height: 1.55; }
 
 
-.admin-shape { fill: #d6b56d; fill-opacity: .015; stroke: #e2c67f; stroke-width: .8; vector-effect: non-scaling-stroke; cursor: pointer; outline: none; }
-.admin-shape:hover, .admin-shape:focus-visible { fill: #e0c47b; fill-opacity: .18; stroke: #fff0bf; stroke-width: 1.35; }
-.admin-shape.selected { fill: #f0d28a; fill-opacity: .28; stroke: #fff0bf; stroke-width: 1.6; }
+.admin-shape { fill: #d6b56d; fill-opacity: .005; stroke: #d9c07f; stroke-opacity: .78; stroke-width: .62; vector-effect: non-scaling-stroke; cursor: pointer; outline: none; }
+.admin-shape:hover, .admin-shape:focus-visible { fill: #e0c47b; fill-opacity: .18; stroke: #fff0bf; stroke-opacity: 1; stroke-width: 1.35; }
+.admin-shape.selected { fill: #f0d28a; fill-opacity: .28; stroke: #fff0bf; stroke-opacity: 1; stroke-width: 1.6; }
