@@ -81,8 +81,9 @@ h1 em { color: var(--accent); font-weight: 400; }
 .legend-canal { background: #d6b56d; height: 3px !important; width: 13px !important; box-shadow: 0 0 5px #d6b56d88; }
 .canal-hit-line { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; outline: none; }
 .canal-hit-line:focus-visible { stroke: #d6b56d66; stroke-width: 10; }
-.canal-visible-line { fill: none; stroke: #e2bd67; stroke-width: 2.2; stroke-dasharray: 4 2; vector-effect: non-scaling-stroke; pointer-events: none; filter: drop-shadow(0 0 3px #d6b56d88); }
-.canal-label { fill: #f1d99c; font-size: 10px; font-weight: 700; paint-order: stroke; stroke: #0b141d; stroke-width: 3px; stroke-linejoin: round; }
+.canal-visible-line { fill: none; stroke: #f2c75e; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 4 2; vector-effect: non-scaling-stroke; pointer-events: none; filter: drop-shadow(0 0 4px #f2c75eaa); }
+.canal-marker { fill: #f2c75e; stroke: #0b141d; stroke-width: 1.5; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 4px #f2c75e); }
+.canal-label { fill: #fff0bd; font-size: 12px; font-weight: 800; paint-order: stroke; stroke: #0b141d; stroke-width: 3.5px; stroke-linejoin: round; }
 .legend-ocean { background: #0d202d; border: 1px solid #284351; }
 .map-coordinates { position: absolute; right: 16px; bottom: 18px; color: #718491; font-size: 8px; letter-spacing: .12em; }
 .map-footer { display: flex; justify-content: space-between; gap: 16px; padding: 12px 22px; border-top: 1px solid #1d2d3a; color: #81929e; font-size: 8px; letter-spacing: .09em; }
