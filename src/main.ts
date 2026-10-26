@@ -431,7 +431,6 @@ function renderMap(): void {
   cityLayer.setAttribute("aria-label", "Urban-area polygons");
   for (const cityRecord of cityRecords) {
     const { feature, id: cityId, name: cityName, country: cityCountry } = cityRecord;
-    if (!city) continue;
     const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
     shape.setAttribute("d", path(feature) ?? "");
     shape.setAttribute("class", "city-shape" + (selectedCityId === cityId ? " selected" : ""));
