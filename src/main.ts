@@ -1,4 +1,5 @@
 import { geoNaturalEarth1, geoPath } from "d3-geo";
+import waterTextureUrl from "./water_texture.jpg";
 import { BIOME_TAGS } from "./terrain";
 import { loadAllFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
 import "./style.css";
@@ -276,6 +277,22 @@ function renderMap(): void {
   waterPattern.append(noiseTile, rippleLines);
   defs.append(waterPattern);
 
+  // Tile the supplied JPG as a subtle base water texture. Keep the procedural
+  // noise and animated ripples above it for fine detail.
+  const waterImagePattern = document.createElementNS(defs.namespaceURI, "pattern");
+  waterImagePattern.setAttribute("id", "water-image-pattern");
+  waterImagePattern.setAttribute("width", "256");
+  waterImagePattern.setAttribute("height", "256");
+  waterImagePattern.setAttribute("patternUnits", "userSpaceOnUse");
+  const waterImage = document.createElementNS(defs.namespaceURI, "image");
+  waterImage.setAttribute("href", waterTextureUrl);
+  waterImage.setAttribute("width", "256");
+  waterImage.setAttribute("height", "256");
+  waterImage.setAttribute("preserveAspectRatio", "none");
+  waterImage.setAttribute("opacity", "0.16");
+  waterImagePattern.append(waterImage);
+  defs.append(waterImagePattern);
+
   // A restrained diagonal hatch adds texture without obscuring the biome colours.
   const biomeTexture = document.createElementNS(defs.namespaceURI, "pattern");
   biomeTexture.setAttribute("id", "biome-texture");
@@ -307,9 +324,18 @@ function renderMap(): void {
   waterTexture.setAttribute("class", "water-texture");
   waterTexture.setAttribute("width", String(viewWidth));
   waterTexture.setAttribute("height", String(viewHeight));
-  waterTexture.setAttribute("fill", "url(#water-texture)");
+  waterTexture.setAttribute("fill", "url(#water-image-pattern)");
   waterTexture.setAttribute("pointer-events", "none");
   contentGroup.append(waterTexture);
+
+  // Preserve the existing subtle procedural detail as a separate overlay.
+  const waterDetail = document.createElementNS(svg.namespaceURI, "rect");
+  waterDetail.setAttribute("class", "water-detail");
+  waterDetail.setAttribute("width", String(viewWidth));
+  waterDetail.setAttribute("height", String(viewHeight));
+  waterDetail.setAttribute("fill", "url(#water-texture)");
+  waterDetail.setAttribute("pointer-events", "none");
+  contentGroup.append(waterDetail);
 
   countryFeatures = countryCollection.features as CountryFeature[];
   const countryLayer = document.createElementNS(svg.namespaceURI, "g");
