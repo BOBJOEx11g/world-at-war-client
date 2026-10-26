@@ -70,7 +70,9 @@ h1 em { color: #ffffff; font-weight: 400; }
 .ocean { fill: #245A70; }
 .country-shape { fill: var(--land); stroke: #171612; stroke-width: 2.8; vector-effect: non-scaling-stroke; pointer-events: none; }
 .city-layer { pointer-events: none; }
-.city-shape { pointer-events: visibleFill; cursor: pointer; }
+.city-shape { fill: #a87945; fill-opacity: .62; stroke: #f4e5bd; stroke-width: .7; stroke-opacity: .95; vector-effect: non-scaling-stroke; pointer-events: visibleFill; cursor: pointer; outline: none; }
+.city-shape:hover, .city-shape:focus-visible { fill: #d1a45b; fill-opacity: .9; stroke: #fff0c9; stroke-width: 1.3; }
+.city-shape.selected { fill: #dfad46; fill-opacity: .95; stroke: #fff5d7; stroke-width: 1.8; }
 .map-loading { position: absolute; z-index: 2; top: 16px; left: 16px; color: #716958; font-size: 11px; }
 .map-legend { position: absolute; bottom: 18px; left: 18px; display: flex; gap: 14px; padding: 10px 12px; border: 1px solid #c4b795; background: #e8ddbdF2; color: #514838; font-size: 9px; }
 .map-legend span { display: flex; align-items: center; gap: 6px; }
