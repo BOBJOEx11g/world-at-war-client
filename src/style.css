@@ -67,7 +67,7 @@ h1 em { color: var(--accent); font-weight: 400; }
 #world-map:active { cursor: grabbing; }
 .map-content { transform-box: view-box; transform-origin: 0 0; will-change: transform; }
 .ocean { fill: #0d202d; }
-.country-shape { fill: var(--land); stroke: #72918b; stroke-width: .55; vector-effect: non-scaling-stroke; pointer-events: none; }
+.country-shape { fill: var(--land); stroke: #536f6b; stroke-width: 2.8; vector-effect: non-scaling-stroke; pointer-events: none; }
 .city-layer { pointer-events: none; }
 .city-shape { pointer-events: visibleFill; cursor: pointer; }
 .map-loading { position: absolute; z-index: 2; top: 16px; left: 16px; color: #aabac4; font-size: 11px; }
