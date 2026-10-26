@@ -59,6 +59,7 @@ h1 em { color: #ffffff; font-weight: 400; }
 .map-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 23px; border-bottom: 1px solid #c4b795; }
 .map-toolbar > div:first-child { display: flex; flex-direction: column; gap: 5px; color: #111111; }
 .map-toolbar strong { color: #111111; font-size: 14px; font-weight: 600; }
+.toolbar-kicker { color: #111111; }
 .map-actions { display: flex; align-items: center; gap: 6px; }
 .map-actions button { min-width: 32px; height: 30px; padding: 0 9px; border: 1px solid #c4b795; background: #e4d8bb; color: #514838; font-size: 12px; }
 .map-actions button:last-child { margin-left: 5px; color: #514838; font-size: 9px; letter-spacing: .1em; }
