@@ -1,7 +1,7 @@
-import { geoCentroid, geoNaturalEarth1, geoPath } from "d3-geo";
+import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
-import worldAtlas from "world-atlas/countries-50m.json";
+import worldAtlas from "world-atlas/countries-10m.json";
 import "./style.css";
 
 type CountryProperties = { name?: string; [key: string]: unknown };
@@ -39,7 +39,7 @@ app.innerHTML = `
         <li><span class="status-pending">•</span><span>Detailed provinces & islands</span><span class="status-word pending">IN PROGRESS</span></li>
         <li><span class="status-pending">•</span><span>Multiplayer server</span><span class="status-word pending">PLANNED</span></li>
       </ul>
-      <div class="sidebar-note"><strong>*Map-data note</strong><p>This first renderer uses Natural Earth 1:50m country geometry to prove the pipeline. It is not yet the final province-level map, and some tiny islands may be simplified or omitted. We'll replace and augment it with audited, higher-detail data.</p></div>
+      <div class="sidebar-note"><strong>*Map-data note</strong><p>The map uses Natural Earth 1:10m Admin 0 – Countries geometry (258 features). Country shapes are also their click targets; no oversized helper hitboxes are used.</p></div>
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
@@ -128,11 +128,9 @@ function renderMap(): void {
   // Attach the geometry before measuring paths so getBBox() returns real bounds.
   svg.append(contentGroup);
 
-  // Keep tiny standalone islands selectable even when their real geometry is
-  // only a few screen pixels wide. These transparent hit targets do not alter
-  // the displayed borders or the underlying geographic data.
-  const tinyTerritoryTargets: Array<{ id: string; name: string; x: number; y: number; radius: number }> = [];
-
+  // Each country's own rendered 1:10m polygon is also its hitbox.
+  // No centroid circles or manually positioned targets: neighbouring countries
+  // cannot be selected by an oversized helper target.
   for (const country of countryFeatures) {
     const countryId = String(country.id ?? country.properties.name ?? "unknown");
     const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
@@ -142,6 +140,8 @@ function renderMap(): void {
     shape.setAttribute("tabindex", "0");
     shape.setAttribute("role", "button");
     shape.setAttribute("aria-label", country.properties.name ?? `Country ${countryId}`);
+    // Only the actual polygon fill receives pointer events, not its outline.
+    shape.setAttribute("pointer-events", "visibleFill");
     shape.addEventListener("click", () => selectCountry(countryId));
     shape.addEventListener("keydown", (event) => {
       const keyboardEvent = event as KeyboardEvent;
@@ -151,103 +151,9 @@ function renderMap(): void {
       }
     });
     countryLayer.append(shape);
-
-    const bounds = shape.getBBox();
-    const largestDimension = Math.max(bounds.width, bounds.height);
-    if (largestDimension > 0 && largestDimension < 12) {
-      tinyTerritoryTargets.push({
-        id: countryId,
-        name: country.properties.name ?? `Country ${countryId}`,
-        x: bounds.x + bounds.width / 2,
-        y: bounds.y + bounds.height / 2,
-        radius: Math.max(7, largestDimension / 2 + 3),
-      });
-    }
   }
 
-  const tinyTargetLayer = document.createElementNS(svg.namespaceURI, "g");
-  tinyTargetLayer.setAttribute("class", "tiny-territory-targets");
-  for (const target of tinyTerritoryTargets) {
-    const hitTarget = document.createElementNS(svg.namespaceURI, "circle") as SVGCircleElement;
-    hitTarget.setAttribute("cx", String(target.x));
-    hitTarget.setAttribute("cy", String(target.y));
-    hitTarget.setAttribute("r", String(target.radius));
-    hitTarget.setAttribute("fill", "transparent");
-    hitTarget.setAttribute("stroke", "none");
-    hitTarget.setAttribute("pointer-events", "all");
-    hitTarget.setAttribute("class", "tiny-territory-hit-target");
-    hitTarget.setAttribute("data-country-id", target.id);
-    hitTarget.setAttribute("tabindex", "0");
-    hitTarget.setAttribute("role", "button");
-    hitTarget.setAttribute("aria-label", `Select ${target.name}`);
-    hitTarget.addEventListener("click", () => selectCountry(target.id));
-    hitTarget.addEventListener("keydown", (event) => {
-      const keyboardEvent = event as KeyboardEvent;
-      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-        keyboardEvent.preventDefault();
-        selectCountry(target.id);
-      }
-    });
-    tinyTargetLayer.append(hitTarget);
-  }
-  // Explicit geographic hit targets for small but important countries.
-  // Their centres come from longitude/latitude rather than a tiny or
-  // simplified polygon bounding box, and their targets sit above country
-  // shapes so neighbouring paths cannot steal the click.
-  const priorityCountryTargets = [
-    { name: "Aruba", fallbackCoordinates: [-69.97, 12.52] as [number, number] },
-    { name: "Israel", fallbackCoordinates: [34.85, 31.50] as [number, number] },
-    { name: "United Arab Emirates", fallbackCoordinates: [54.30, 24.20] as [number, number] },
-  ];
-  for (const target of priorityCountryTargets) {
-    const matchingFeature = countryFeatures.find(
-      (country) => country.properties.name?.toLowerCase() === target.name.toLowerCase(),
-    );
-    // Anchor the hit target to the actual feature geometry whenever available.
-    // Hard-coded coordinates can land in a neighbouring country or sea at this map scale.
-    const coordinates = matchingFeature ? geoCentroid(matchingFeature) as [number, number] : target.fallbackCoordinates;
-    const point = projection(coordinates);
-    if (!point) continue;
-    const hitTarget = document.createElementNS(svg.namespaceURI, "circle") as SVGCircleElement;
-    hitTarget.setAttribute("cx", String(point[0]));
-    hitTarget.setAttribute("cy", String(point[1]));
-    hitTarget.setAttribute("r", target.name === "Aruba" ? "13" : "12");
-    hitTarget.setAttribute("fill", "transparent");
-    hitTarget.setAttribute("stroke", "none");
-    hitTarget.setAttribute("pointer-events", "all");
-    hitTarget.setAttribute("class", "tiny-territory-hit-target priority-country-hit-target");
-    hitTarget.setAttribute("tabindex", "0");
-    hitTarget.setAttribute("role", "button");
-    hitTarget.setAttribute("aria-label", `Select ${target.name}`);
-    const selectPriorityCountry = () => {
-      if (matchingFeature) {
-        selectCountry(String(matchingFeature.id ?? matchingFeature.properties.name ?? target.name));
-      } else {
-        selectedId = null;
-        selectedName.textContent = target.name;
-        selectedDetail.textContent = "Geographic hit target. Detailed country geometry is not included in the current provisional map dataset.";
-        selectionCard.classList.add("has-selection");
-        for (const shape of svg.querySelectorAll<SVGPathElement>(".country-shape")) {
-          shape.classList.remove("selected");
-        }
-        mapStatus.textContent = `Selected: ${target.name} · geometry needs a higher-detail map source`;
-      }
-    };
-    hitTarget.addEventListener("click", (event) => {
-      event.stopPropagation();
-      selectPriorityCountry();
-    });
-    hitTarget.addEventListener("keydown", (event) => {
-      const keyboardEvent = event as KeyboardEvent;
-      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-        keyboardEvent.preventDefault();
-        keyboardEvent.stopPropagation();
-        selectPriorityCountry();
-      }
-    });
-    tinyTargetLayer.append(hitTarget);
-  }
-  contentGroup.append(tinyTargetLayer);
+
 
   applyViewTransform(false);
   loading.hidden = true;
@@ -260,7 +166,7 @@ function selectCountry(id: string): void {
   if (!country) return;
   const name = country.properties.name ?? `Country ${id}`;
   selectedName.textContent = name;
-  selectedDetail.textContent = `Map feature ID: ${id}. Historical status and playable-nation data are not yet attached.`;
+  selectedDetail.textContent = `Map feature ID: ${id}. Country geometry is selectable directly; political status and playable-nation rules are managed separately.`;
   selectionCard.classList.add("has-selection");
   for (const shape of svg.querySelectorAll<SVGPathElement>(".country-shape")) {
     shape.classList.toggle("selected", shape.dataset.countryId === id);
