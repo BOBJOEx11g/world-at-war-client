@@ -13,7 +13,7 @@
   --land-hover: #4f7775;
 }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 360px; min-height: 100vh; background: #0b1118; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #0b1118; }
 button { font: inherit; color: inherit; cursor: pointer; }
 .topbar { height: 66px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 0 25px; border-bottom: 1px solid var(--line); background: #101923; }
 .brand { display: flex; align-items: center; gap: 11px; color: #eef3f5; text-decoration: none; font-size: 12px; font-weight: 700; letter-spacing: .17em; white-space: nowrap; }
@@ -85,5 +85,6 @@ dialog::backdrop { background: #0009; backdrop-filter: blur(3px); }
 .dialog-top button { border: 0; background: transparent; font-size: 23px; }
 dialog p { color: #aab8c2; font-size: 13px; line-height: 1.6; }
 @media (min-width: 1200px) { .map-wrap { min-height: calc(100vh - 155px); } }
-@media (max-width: 900px) { .layout { grid-template-columns: 270px minmax(0, 1fr); } .sidebar { padding: 22px 16px; } .topbar { padding: 0 16px; } .scenario { display: none; } }
-@media (max-width: 650px) { .layout { display: flex; flex-direction: column; } .sidebar { border-right: 0; border-bottom: 1px solid var(--line); } .sidebar-note, .sidebar footer { display: none; } .stat-grid { margin-bottom: 20px; } .map-panel { min-height: 70vh; } .map-wrap { min-height: 60vh; } .map-toolbar { padding: 14px; } .map-footer { flex-direction: column; padding: 10px 14px; } .connection { display: none; } }
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(230px, 270px) minmax(0, 1fr); } .sidebar { padding: 22px 16px; } .topbar { padding: 0 16px; } .scenario { display: none; } .map-toolbar { padding: 14px 16px; } .map-footer { padding: 10px 16px; } }
+@media (max-width: 760px) { .layout { display: flex; flex-direction: column; } .sidebar { border-right: 0; border-bottom: 1px solid var(--line); padding: 20px 16px; } .sidebar-note { margin-top: 0; } .sidebar footer { margin-top: 14px; } .stat-grid { margin-bottom: 20px; } .map-panel { min-height: 65vh; } .map-wrap { min-height: 55vh; } .map-toolbar { flex-wrap: wrap; } .map-footer { flex-direction: column; gap: 7px; } }
+@media (max-width: 480px) { .topbar { height: 58px; padding: 0 12px; } .brand { gap: 7px; font-size: 10px; letter-spacing: .12em; } .brand-mark { width: 30px; height: 30px; font-size: 20px; } .layout { min-height: calc(100vh - 58px); } .sidebar { padding: 18px 12px; } h1 { font-size: 28px; } .map-toolbar { align-items: flex-start; gap: 12px; } .map-actions { flex-wrap: wrap; } .map-actions button:last-child { margin-left: 0; } .map-wrap { min-height: 48vh; } .map-legend { left: 8px; bottom: 10px; gap: 8px; padding: 8px; font-size: 8px; } .map-coordinates { right: 8px; bottom: 10px; font-size: 7px; } .connection { display: none; } }
