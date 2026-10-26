@@ -1,5 +1,6 @@
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { BIOME_TAGS } from "./terrain";
+import { loadFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
 import "./style.css";
 
 type CountryProperties = { name?: string; [key: string]: unknown };
@@ -75,6 +76,9 @@ let suppressNextClick = false;
 let viewWidth = 1200;
 let viewHeight = 650;
 let countryFeatures: CountryFeature[] = [];
+let administrativeFeatures: AdministrativeFeature[] = [];
+let administrativeCountryId: string | null = null;
+let selectedProvinceId: string | null = null;
 
 const ADMIN0_GEOJSON_URL =
   "https://raw.githubusercontent.com/datasets/geo-countries/ca3b7150caa5d3cc3fb108a87fc6e3d57bd97d99/data/countries.geojson";
@@ -204,7 +208,36 @@ function renderMap(): void {
     countryLayer.append(shape);
   }
 
-
+  // Show first-level administrative boundaries for the selected country only.
+  if (administrativeCountryId === selectedId && administrativeFeatures.length > 0) {
+    const administrativeLayer = document.createElementNS(svg.namespaceURI, "g");
+    administrativeLayer.setAttribute("class", "administrative-layer");
+    for (const feature of administrativeFeatures) {
+      const provinceId = String(feature.id ?? feature.properties.shapeID ?? feature.properties.shapeName ?? "unknown");
+      const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
+      shape.setAttribute("d", path(feature) ?? "");
+      shape.setAttribute("class", "admin-shape" + (selectedProvinceId === provinceId ? " selected" : ""));
+      shape.setAttribute("data-province-id", provinceId);
+      shape.setAttribute("tabindex", "0");
+      shape.setAttribute("role", "button");
+      shape.setAttribute("aria-label", String(feature.properties.shapeName ?? "State or province"));
+      shape.setAttribute("pointer-events", "visibleFill");
+      shape.addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectProvince(provinceId);
+      });
+      shape.addEventListener("keydown", (event) => {
+        const keyboardEvent = event as KeyboardEvent;
+        if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+          keyboardEvent.preventDefault();
+          event.stopPropagation();
+          selectProvince(provinceId);
+        }
+      });
+      administrativeLayer.append(shape);
+    }
+    contentGroup.append(administrativeLayer);
+  }
 
   applyViewTransform(false);
   loading.hidden = true;
@@ -213,16 +246,64 @@ function renderMap(): void {
 
 function selectCountry(id: string): void {
   selectedId = id;
+  selectedProvinceId = null;
+  administrativeFeatures = [];
+  administrativeCountryId = null;
   const country = countryFeatures.find((feature) => String(feature.id ?? feature.properties.name ?? "unknown") === id);
   if (!country) return;
   const name = country.properties.name ?? `Country ${id}`;
   selectedName.textContent = name;
-  selectedDetail.textContent = `Map feature ID: ${id}. Country geometry is selectable directly; political status and playable-nation rules are managed separately.`;
+  selectedDetail.textContent = `Country selected. Loading states/provinces where available. Map ID: ${id}.`;
   selectionCard.classList.add("has-selection");
   for (const shape of svg.querySelectorAll<SVGPathElement>(".country-shape")) {
     shape.classList.toggle("selected", shape.dataset.countryId === id);
   }
-  mapStatus.textContent = `Selected: ${name}`;
+  mapStatus.textContent = \`Selected: \${name} · loading states/provinces…\`;
+
+  const iso3Value = country.properties["ISO3166-1-Alpha-3"];
+  if (typeof iso3Value === "string" && iso3Value !== "-99") {
+    void loadFirstLevelBoundaries(iso3Value)
+      .then((collection) => {
+        if (selectedId !== id) return;
+        administrativeFeatures = collection?.features ?? [];
+        administrativeCountryId = administrativeFeatures.length > 0 ? id : null;
+        if (administrativeFeatures.length > 0) {
+          selectedDetail.textContent = \`\${name} · \${administrativeFeatures.length.toLocaleString()} first-level administrative areas loaded. Select a state or province on the map.\`;
+          mapStatus.textContent = \`\${name}: \${administrativeFeatures.length.toLocaleString()} states/provinces · geoBoundaries (CC BY 4.0)\`;
+        } else {
+          selectedDetail.textContent = \`\${name} · no first-level boundary data was available from the source.\`;
+          mapStatus.textContent = \`Selected: \${name} · no ADM1 data available\`;
+        }
+        renderMap();
+      })
+      .catch((error) => {
+        if (selectedId !== id) return;
+        selectedDetail.textContent = \`\${name} · could not load state/province boundaries. Check the connection and try selecting the country again.\`;
+        mapStatus.textContent = \`Selected: \${name} · administrative boundary load failed\`;
+        console.error("World at War administrative boundaries failed to load:", error);
+      });
+  } else {
+    selectedDetail.textContent = \`\${name} · this map feature has no usable ISO-3 code for administrative-boundary lookup.\`;
+    mapStatus.textContent = \`Selected: \${name} · no ISO-3 code\`;
+  }
+}
+
+function selectProvince(id: string): void {
+  selectedProvinceId = id;
+  const province = administrativeFeatures.find((feature) =>
+    String(feature.id ?? feature.properties.shapeID ?? feature.properties.shapeName ?? "unknown") === id
+  );
+  if (!province) return;
+  const provinceName = String(province.properties.shapeName ?? "Unnamed state/province");
+  const country = countryFeatures.find((feature) => String(feature.id ?? feature.properties.name ?? "unknown") === selectedId);
+  const countryName = country?.properties.name ?? "Selected country";
+  selectedName.textContent = provinceName;
+  selectedDetail.textContent = \`\${provinceName} · \${countryName}. Administrative boundaries from geoBoundaries; game ownership and biome tags are not assigned yet.\`;
+  selectionCard.classList.add("has-selection");
+  for (const shape of svg.querySelectorAll<SVGPathElement>(".admin-shape")) {
+    shape.classList.toggle("selected", shape.dataset.provinceId === id);
+  }
+  mapStatus.textContent = \`Selected state/province: \${provinceName} · \${countryName}\`;
 }
 
 function applyViewTransform(animate = true): void {
