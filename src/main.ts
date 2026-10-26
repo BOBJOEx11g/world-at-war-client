@@ -133,13 +133,7 @@ function renderMap(): void {
     shape.setAttribute("tabindex", "0");
     shape.setAttribute("role", "button");
     shape.setAttribute("aria-label", country.properties.name ?? `Country ${countryId}`);
-    shape.addEventListener("click", () => {
-      if (suppressNextClick) {
-        suppressNextClick = false;
-        return;
-      }
-      selectCountry(countryId);
-    });
+    shape.addEventListener("click", () => selectCountry(countryId));
     shape.addEventListener("keydown", (event) => {
       const keyboardEvent = event as KeyboardEvent;
       if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
@@ -208,6 +202,7 @@ svg.addEventListener("wheel", (event: WheelEvent) => {
 
 svg.addEventListener("pointerdown", (event: PointerEvent) => {
   if (event.button !== 0) return;
+  suppressNextClick = false;
   isPanning = true;
   didPan = false;
   pointerStartX = event.clientX;
@@ -237,6 +232,12 @@ function finishPan(): void {
 
 svg.addEventListener("pointerup", finishPan);
 svg.addEventListener("pointercancel", finishPan);
+svg.addEventListener("click", (event: MouseEvent) => {
+  if (!suppressNextClick) return;
+  suppressNextClick = false;
+  event.preventDefault();
+  event.stopPropagation();
+}, true);
 document.querySelector("#about-button")?.addEventListener("click", () => (document.querySelector<HTMLDialogElement>("#about-dialog")!).showModal());
 document.querySelector("#close-about")?.addEventListener("click", () => document.querySelector<HTMLDialogElement>("#about-dialog")!.close());
 
