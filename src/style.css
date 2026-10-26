@@ -78,11 +78,6 @@ h1 em { color: var(--accent); font-weight: 400; }
 .map-legend i { display: inline-block; width: 9px; height: 9px; }
 .legend-country { background: var(--land); border: 1px solid #72918b; }
 .legend-selected { background: #b38e4f; }
-.legend-canal { background: #48b8d0; height: 4px !important; width: 13px !important; box-shadow: 0 0 4px #48b8d055; }
-.canal-hit-line { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; outline: none; }
-.canal-hit-line:focus-visible { stroke: #d6b56d66; stroke-width: 10; }
-.canal-bank-line { fill: none; stroke: #102b36; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
-.canal-water-line { fill: none; stroke: #48b8d0; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
 .legend-ocean { background: #0d202d; border: 1px solid #284351; }
 .map-coordinates { position: absolute; right: 16px; bottom: 18px; color: #718491; font-size: 8px; letter-spacing: .12em; }
 .map-footer { display: flex; justify-content: space-between; gap: 16px; padding: 12px 22px; border-top: 1px solid #1d2d3a; color: #81929e; font-size: 8px; letter-spacing: .09em; }
