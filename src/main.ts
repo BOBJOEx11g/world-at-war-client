@@ -301,6 +301,7 @@ function renderMap(): void {
     canalLayer.append(visibleLine);
 
     const midpoint = points[Math.floor(points.length / 2)];
+    if (!midpoint) continue;
     const marker = document.createElementNS(svg.namespaceURI, "circle");
     marker.setAttribute("cx", String(midpoint[0]));
     marker.setAttribute("cy", String(midpoint[1]));
