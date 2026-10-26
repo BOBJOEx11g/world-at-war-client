@@ -112,12 +112,15 @@ let biomeDataPromise: Promise<BiomeFeature[]> | null = null;
 const biomeToggle = document.querySelector<HTMLButtonElement>("#toggle-biomes")!;
 const mapLegend = document.querySelector<HTMLDivElement>("#map-legend")!;
 
+// Generalize the global ecoregion geometry slightly: this is a broad map overlay,
+// not navigation-grade data, and smaller paths render much faster in the browser.
 const BIOME_GEOJSON_URL =
-  "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Resolve_Ecoregions/FeatureServer/0/query?where=1%3D1&outFields=BIOME_NAME&returnGeometry=true&outSR=4326&f=geojson";
+  "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Resolve_Ecoregions/FeatureServer/0/query?where=1%3D1&outFields=BIOME_NAME&returnGeometry=true&outSR=4326&maxAllowableOffset=0.02&geometryPrecision=4&resultRecordCount=1000&f=geojson";
 
 async function loadBiomeGeometry(): Promise<BiomeFeature[]> {
   const response = await fetch(BIOME_GEOJSON_URL, {
     headers: { accept: "application/geo+json, application/json" },
+    signal: AbortSignal.timeout(25000),
   });
   if (!response.ok) throw new Error(`Biome data request failed: HTTP ${response.status}`);
   const dataset = (await response.json()) as { type?: string; features?: BiomeFeature[] };
@@ -301,10 +304,21 @@ function renderMap(): void {
     const biomeLayer = document.createElementNS(svg.namespaceURI, "g");
     biomeLayer.setAttribute("class", "biome-layer");
     biomeLayer.setAttribute("aria-label", "RESOLVE 2017 biome overlay");
+    // Merge ecoregion paths by biome before adding SVG nodes. The source has
+    // hundreds of regions; one combined path per biome is far cheaper to render
+    // than creating two SVG elements for every region.
+    const pathsByBiome = new Map<string, string[]>();
     for (const feature of biomeFeatures) {
       const biome = biomeTagForFeature(feature);
       const d = path(feature) ?? "";
       if (!d) continue;
+      const paths = pathsByBiome.get(biome) ?? [];
+      paths.push(d);
+      pathsByBiome.set(biome, paths);
+    }
+
+    for (const [biome, paths] of pathsByBiome) {
+      const d = paths.join(" ");
       const fill = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
       fill.setAttribute("d", d);
       fill.setAttribute("class", "biome-region biome-" + biome);
