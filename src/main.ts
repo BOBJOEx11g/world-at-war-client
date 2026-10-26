@@ -5,6 +5,30 @@ import "./style.css";
 
 type CountryProperties = { name?: string; [key: string]: unknown };
 type CountryFeature = GeoJSON.Feature<GeoJSON.Geometry, CountryProperties>;
+type BiomeFeature = GeoJSON.Feature<GeoJSON.Geometry, { BIOME_NAME?: string; [key: string]: unknown }>;
+
+const BIOME_COLORS: Record<string, string> = {
+  forest: "#397b54",
+  rainforest: "#176348",
+  grassland: "#a5aa55",
+  savanna: "#c3a04f",
+  desert: "#c58a59",
+  shrubland: "#7e9364",
+  tundra: "#a9c9c6",
+  wetland: "#4d9990",
+};
+
+function biomeTagForFeature(feature: BiomeFeature): string {
+  const name = String(feature.properties?.BIOME_NAME ?? "").toLowerCase();
+  if (name.includes("desert")) return "desert";
+  if (name.includes("tundra") || name === "n/a") return "tundra";
+  if (name.includes("flooded") || name.includes("mangrove")) return "wetland";
+  if (name.includes("mediterranean") || name.includes("montane grassland")) return "shrubland";
+  if (name.includes("temperate grassland") || name.includes("grasslands, savannas")) return "grassland";
+  if (name.includes("tropical") && name.includes("grassland")) return "savanna";
+  if (name.includes("moist broadleaf")) return "rainforest";
+  return "forest";
+}
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing #app root element.");
@@ -40,13 +64,13 @@ app.innerHTML = `
       </ul>
       <div class="section-heading">SUPPORTED BIOMES <span class="live-label">8 TAGS</span></div>
       <div class="biome-tags" aria-label="Supported biome tags">${BIOME_TAGS.map((biome) => `<span class="biome-tag">${biome}</span>`).join("")}</div>
-      <p class="biome-note">Biome vocabulary is ready for singleplayer. Province-level assignments await province boundaries.</p>
+      <p class="biome-note">Toggle the biome map to view broad ecological regions. This is a reference overlay, not yet province-level game terrain data.</p>
       <div class="sidebar-note"><strong>*Map-data note</strong><p>Countries use Natural Earth Admin 0 geometry (258 features); worldwide state/province polygons use Natural Earth 1:10m Admin 1. Both layers use real polygon geometry rather than oversized helper hitboxes.</p></div>
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
-      <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="reset-view">RESET VIEW</button></div></div>
-      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><svg id="world-map" role="img" aria-label="Interactive map of state and province polygons across the world"></svg><div class="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
+      <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="toggle-biomes" aria-pressed="false">BIOMES: OFF</button><button id="reset-view">RESET VIEW</button></div></div>
+      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><svg id="world-map" role="img" aria-label="Interactive map of state and province polygons across the world"></svg><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
       <div class="map-footer"><span id="map-status">Loading country geometry…</span><span>SCENARIO DATA: 2026 <i>·</i> MAP DATA: PROVISIONAL</span></div>
     </section>
   </main>
@@ -79,6 +103,36 @@ let countryFeatures: CountryFeature[] = [];
 let allAdministrativeFeatures: AdministrativeFeature[] = [];
 let administrativeDataReady = false;
 let selectedProvinceId: string | null = null;
+let biomeModeEnabled = false;
+let biomeFeatures: BiomeFeature[] = [];
+let biomeDataPromise: Promise<BiomeFeature[]> | null = null;
+const biomeToggle = document.querySelector<HTMLButtonElement>("#toggle-biomes")!;
+const mapLegend = document.querySelector<HTMLDivElement>("#map-legend")!;
+
+const BIOME_GEOJSON_URL =
+  "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Resolve_Ecoregions/FeatureServer/0/query?where=1%3D1&outFields=BIOME_NAME&returnGeometry=true&outSR=4326&f=geojson";
+
+async function loadBiomeGeometry(): Promise<BiomeFeature[]> {
+  const response = await fetch(BIOME_GEOJSON_URL, {
+    headers: { accept: "application/geo+json, application/json" },
+  });
+  if (!response.ok) throw new Error(`Biome data request failed: HTTP ${response.status}`);
+  const dataset = (await response.json()) as { type?: string; features?: BiomeFeature[] };
+  if (dataset.type !== "FeatureCollection" || !Array.isArray(dataset.features) || dataset.features.length === 0) {
+    throw new Error("Biome source did not return a valid GeoJSON FeatureCollection.");
+  }
+  return dataset.features;
+}
+
+function loadBiomeGeometryOnce(): Promise<BiomeFeature[]> {
+  if (!biomeDataPromise) {
+    biomeDataPromise = loadBiomeGeometry().catch((error) => {
+      biomeDataPromise = null;
+      throw error;
+    });
+  }
+  return biomeDataPromise;
+}
 
 const ADMIN0_GEOJSON_URL =
   "https://raw.githubusercontent.com/datasets/geo-countries/ca3b7150caa5d3cc3fb108a87fc6e3d57bd97d99/data/countries.geojson";
@@ -165,6 +219,21 @@ function renderMap(): void {
   gridLine.setAttribute("stroke-width", "0.6");
   oceanPattern.append(gridLine);
   defs.append(oceanPattern);
+
+  // A restrained diagonal hatch adds texture without obscuring the biome colours.
+  const biomeTexture = document.createElementNS(defs.namespaceURI, "pattern");
+  biomeTexture.setAttribute("id", "biome-texture");
+  biomeTexture.setAttribute("width", "9");
+  biomeTexture.setAttribute("height", "9");
+  biomeTexture.setAttribute("patternUnits", "userSpaceOnUse");
+  const hatch = document.createElementNS(defs.namespaceURI, "path");
+  hatch.setAttribute("d", "M -2 2 L 2 -2 M 0 9 L 9 0 M 7 11 L 11 7");
+  hatch.setAttribute("fill", "none");
+  hatch.setAttribute("stroke", "#f2f0d8");
+  hatch.setAttribute("stroke-opacity", "0.17");
+  hatch.setAttribute("stroke-width", "0.65");
+  biomeTexture.append(hatch);
+  defs.append(biomeTexture);
   svg.append(defs);
 
   const contentGroup = document.createElementNS(svg.namespaceURI, "g") as SVGGElement;
@@ -195,6 +264,35 @@ function renderMap(): void {
     // province polygons and, when added, city polygons.
     shape.setAttribute("pointer-events", "none");
     countryLayer.append(shape);
+  }
+
+  // The optional biome overlay sits above country fills but below selectable
+  // province boundaries, so enabling it never hides the territory hitboxes.
+  if (biomeModeEnabled && biomeFeatures.length > 0) {
+    const biomeLayer = document.createElementNS(svg.namespaceURI, "g");
+    biomeLayer.setAttribute("class", "biome-layer");
+    biomeLayer.setAttribute("aria-label", "RESOLVE 2017 biome overlay");
+    for (const feature of biomeFeatures) {
+      const biome = biomeTagForFeature(feature);
+      const d = path(feature) ?? "";
+      if (!d) continue;
+      const fill = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
+      fill.setAttribute("d", d);
+      fill.setAttribute("class", "biome-region biome-" + biome);
+      fill.setAttribute("fill", BIOME_COLORS[biome] ?? "#718477");
+      fill.setAttribute("aria-hidden", "true");
+      fill.setAttribute("pointer-events", "none");
+      biomeLayer.append(fill);
+
+      const texture = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
+      texture.setAttribute("d", d);
+      texture.setAttribute("class", "biome-texture");
+      texture.setAttribute("fill", "url(#biome-texture)");
+      texture.setAttribute("aria-hidden", "true");
+      texture.setAttribute("pointer-events", "none");
+      biomeLayer.append(texture);
+    }
+    contentGroup.append(biomeLayer);
   }
 
   // Always draw the complete global state/province layer, regardless of selection.
@@ -298,6 +396,48 @@ function focusMapCoordinate(longitude: number, latitude: number, scale: number):
 document.querySelector("#zoom-in")?.addEventListener("click", () => zoomAtCenter(1.6));
 document.querySelector("#zoom-out")?.addEventListener("click", () => zoomAtCenter(1 / 1.6));
 document.querySelector("#zoom-caribbean")?.addEventListener("click", () => focusMapCoordinate(-68, 17, 5.5));
+
+function updateBiomeLegend(): void {
+  if (!biomeModeEnabled) {
+    mapLegend.innerHTML = '<span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean</span>';
+    return;
+  }
+  mapLegend.innerHTML = Object.entries(BIOME_COLORS)
+    .map(([biome, color]) => `<span><i class="legend-biome" style="background:${color}"></i> ${biome}</span>`)
+    .join("") + '<span><i class="legend-province"></i> Province border</span>';
+}
+
+biomeToggle.addEventListener("click", async () => {
+  if (biomeModeEnabled) {
+    biomeModeEnabled = false;
+    biomeToggle.textContent = "BIOMES: OFF";
+    biomeToggle.setAttribute("aria-pressed", "false");
+    biomeToggle.classList.remove("is-active");
+    updateBiomeLegend();
+    renderMap();
+    return;
+  }
+
+  biomeToggle.disabled = true;
+  biomeToggle.textContent = "LOADING BIOMES…";
+  mapStatus.textContent = "Loading RESOLVE 2017 biome polygons…";
+  try {
+    biomeFeatures = await loadBiomeGeometryOnce();
+    biomeModeEnabled = true;
+    biomeToggle.textContent = "BIOMES: ON";
+    biomeToggle.setAttribute("aria-pressed", "true");
+    biomeToggle.classList.add("is-active");
+    updateBiomeLegend();
+    renderMap();
+    mapStatus.textContent = `Biome overlay on · ${biomeFeatures.length.toLocaleString()} ecological regions · province borders retained`;
+  } catch (error) {
+    console.error("World at War biome geometry failed to load:", error);
+    biomeToggle.textContent = "BIOMES: RETRY";
+    mapStatus.textContent = "Biome overlay failed to load. Check the connection and try again.";
+  } finally {
+    biomeToggle.disabled = false;
+  }
+});
 document.querySelector("#reset-view")?.addEventListener("click", () => {
   zoomScale = 1;
   panX = 0;
