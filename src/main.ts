@@ -135,7 +135,7 @@ function renderMap(): void {
 
   for (const country of countryFeatures) {
     const countryId = String(country.id ?? country.properties.name ?? "unknown");
-    const shape = document.createElementNS(svg.namespaceURI, "path");
+    const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
     shape.setAttribute("d", path(country) ?? "");
     shape.setAttribute("class", `country-shape${selectedId === countryId ? " selected" : ""}`);
     shape.setAttribute("data-country-id", countryId);
@@ -168,7 +168,7 @@ function renderMap(): void {
   const tinyTargetLayer = document.createElementNS(svg.namespaceURI, "g");
   tinyTargetLayer.setAttribute("class", "tiny-territory-targets");
   for (const target of tinyTerritoryTargets) {
-    const hitTarget = document.createElementNS(svg.namespaceURI, "circle");
+    const hitTarget = document.createElementNS(svg.namespaceURI, "circle") as SVGCircleElement;
     hitTarget.setAttribute("cx", String(target.x));
     hitTarget.setAttribute("cy", String(target.y));
     hitTarget.setAttribute("r", String(target.radius));
