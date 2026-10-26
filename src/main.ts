@@ -248,6 +248,19 @@ function renderMap(): void {
     : `${countryFeatures.length.toLocaleString()} countries · loading global state/province dataset…`;
 }
 
+function zoomToCountry(id: string): void {
+  const shape = svg.querySelector<SVGPathElement>(`.country-shape[data-country-id="${CSS.escape(id)}"]`);
+  if (!shape) return;
+  const bounds = shape.getBBox();
+  if (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width < 0.1 || bounds.height < 0.1) return;
+  const padding = 44;
+  const fitScale = Math.min((viewWidth - padding * 2) / Math.max(bounds.width, 1), (viewHeight - padding * 2) / Math.max(bounds.height, 1));
+  zoomScale = Math.max(1, Math.min(18, fitScale));
+  panX = viewWidth / 2 - (bounds.x + bounds.width / 2) * zoomScale;
+  panY = viewHeight / 2 - (bounds.y + bounds.height / 2) * zoomScale;
+  applyViewTransform();
+}
+
 function selectCountry(id: string): void {
   selectedId = id;
   selectedProvinceId = null;
@@ -275,6 +288,7 @@ function selectCountry(id: string): void {
     mapStatus.textContent = "Selected: " + name + " · no ADM1 data available";
   }
   renderMap();
+  zoomToCountry(id);
 }
 function selectProvince(id: string): void {
   selectedProvinceId = id;
