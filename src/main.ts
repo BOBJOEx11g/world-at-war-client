@@ -34,7 +34,7 @@ app.innerHTML = `
       <div class="section-heading">PROJECT STATUS</div>
       <ul class="status-list">
         <li><span class="status-check">✓</span><span>Client scaffold</span><span class="status-word">READY</span></li>
-        <li><span class="status-check">✓</span><span>Interactive country map</span><span class="status-word">READY</span></li>
+        <li><span class="status-check">✓</span><span>Selectable province polygons</span><span class="status-word">READY</span></li>
         <li><span class="status-pending">•</span><span>Detailed provinces & islands</span><span class="status-word pending">IN PROGRESS</span></li>
         <li><span class="status-pending">•</span><span>Multiplayer server</span><span class="status-word pending">PLANNED</span></li>
       </ul>
@@ -182,15 +182,13 @@ function renderMap(): void {
   // Attach the geometry before measuring paths so getBBox() returns real bounds.
   svg.append(contentGroup);
 
-  // Each country's own rendered 1:10m polygon is also its hitbox.
-  // No centroid circles or manually positioned targets: neighbouring countries
-  // cannot be selected by an oversized helper target.
+  // Country polygons are visual context only, not hitboxes. Province polygons
+  // below are the selectable territory shapes; city polygons will sit above them.
   for (const country of countryFeatures) {
-    const countryId = String(country.id ?? country.properties.name ?? "unknown");
     const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
     shape.setAttribute("d", path(country) ?? "");
     shape.setAttribute("class", "country-shape");
-    shape.setAttribute("aria-label", country.properties.name ?? `Country ${countryId}`);
+    shape.setAttribute("aria-hidden", "true");
     // Countries are a visual base layer only. Territory selection belongs to
     // province polygons and, when added, city polygons.
     shape.setAttribute("pointer-events", "none");
