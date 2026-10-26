@@ -10,15 +10,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "d3-geo": "^3.1.1",
-    "topojson-client": "^3.1.0",
-    "world-atlas": "^2.0.2"
+    "d3-geo": "^3.1.1"
   },
   "devDependencies": {
     "@types/d3-geo": "^3.1.0",
     "@types/geojson": "^7946.0.14",
-    "@types/topojson-client": "^3.1.5",
-    "@types/topojson-specification": "^1.0.5",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"
   }
