@@ -9,8 +9,8 @@ The current sate can be found here: https://bobjoex11g.github.io/world-at-war-cl
 The initial client scaffold includes:
 
 - TypeScript + Vite.
-- Interactive SVG country map using Natural Earth 1:50m country geometry.
-- Non-interactive country context layer; territory selection is intended for provinces and cities.
+- SVG world map with Natural Earth country geometry as a non-interactive context layer.
+- Selectable state/province polygons; country polygons are not hitboxes.
 - Worldwide first-level state/province polygons, drawn by default without selecting a country.
 - Shared biome and terrain tag vocabulary for future singleplayer and multiplayer province data.
 - A responsive strategy-game interface.
