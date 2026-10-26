@@ -223,62 +223,7 @@ function renderMap(): void {
   oceanPattern.append(gridLine);
   defs.append(oceanPattern);
 
-  // Fine-grained procedural water: restrained noise plus small, gently moving
-  // ripples. Keep the tile small so it reads as water, not giant contour waves.
-  const waterFilter = document.createElementNS(defs.namespaceURI, "filter");
-  waterFilter.setAttribute("id", "water-ripple-noise");
-  waterFilter.setAttribute("x", "0");
-  waterFilter.setAttribute("y", "0");
-  waterFilter.setAttribute("width", "100%");
-  waterFilter.setAttribute("height", "100%");
-  const turbulence = document.createElementNS(defs.namespaceURI, "feTurbulence");
-  turbulence.setAttribute("type", "fractalNoise");
-  turbulence.setAttribute("baseFrequency", "0.085 0.14");
-  turbulence.setAttribute("numOctaves", "1");
-  turbulence.setAttribute("seed", "17");
-  turbulence.setAttribute("stitchTiles", "stitch");
-  turbulence.setAttribute("result", "water-noise");
-  const tintNoise = document.createElementNS(defs.namespaceURI, "feColorMatrix");
-  tintNoise.setAttribute("type", "matrix");
-  tintNoise.setAttribute("values",
-    "0.16 0.16 0.16 0 0.02 " +
-    "0.16 0.16 0.16 0 0.13 " +
-    "0.16 0.16 0.16 0 0.18 " +
-    "0 0 0 0.25 0");
-  waterFilter.append(turbulence, tintNoise);
-  defs.append(waterFilter);
-
-  const waterPattern = document.createElementNS(defs.namespaceURI, "pattern");
-  waterPattern.setAttribute("id", "water-texture");
-  waterPattern.setAttribute("width", "76");
-  waterPattern.setAttribute("height", "56");
-  waterPattern.setAttribute("patternUnits", "userSpaceOnUse");
-  const noiseTile = document.createElementNS(defs.namespaceURI, "rect");
-  noiseTile.setAttribute("width", "76");
-  noiseTile.setAttribute("height", "56");
-  noiseTile.setAttribute("filter", "url(#water-ripple-noise)");
-  noiseTile.setAttribute("opacity", "0.10");
-  const rippleLines = document.createElementNS(defs.namespaceURI, "path");
-  rippleLines.setAttribute("d",
-    "M 3 10 q 5 -2 10 0 t 10 0 " +
-    "M 39 21 q 4 -1.5 8 0 t 8 0 " +
-    "M 14 34 q 5 -2 10 0 t 10 0 " +
-    "M 48 45 q 4 -1.5 8 0 t 8 0 " +
-    "M 1 51 q 3 -1 6 0");
-  rippleLines.setAttribute("fill", "none");
-  rippleLines.setAttribute("stroke", "#6e8e8a");
-  rippleLines.setAttribute("stroke-width", "0.45");
-  rippleLines.setAttribute("stroke-opacity", "0.09");
-  const rippleMotion = document.createElementNS(defs.namespaceURI, "animateTransform");
-  rippleMotion.setAttribute("attributeName", "transform");
-  rippleMotion.setAttribute("type", "translate");
-  rippleMotion.setAttribute("values", "0 0; 2 1; 0 0");
-  rippleMotion.setAttribute("dur", "14s");
-  rippleMotion.setAttribute("repeatCount", "indefinite");
-  rippleLines.append(rippleMotion);
-  waterPattern.append(noiseTile, rippleLines);
-  defs.append(waterPattern);
-
+  // The supplied JPG provides the water texture; no procedural waves are generated.
   // Tile the supplied JPG as a subtle base water texture. Keep the procedural
   // noise and animated ripples above it for fine detail.
   const waterImagePattern = document.createElementNS(defs.namespaceURI, "pattern");
@@ -291,7 +236,7 @@ function renderMap(): void {
   waterImage.setAttribute("width", "256");
   waterImage.setAttribute("height", "256");
   waterImage.setAttribute("preserveAspectRatio", "none");
-  waterImage.setAttribute("opacity", "0.16");
+  waterImage.setAttribute("opacity", "1");
   waterImagePattern.append(waterImage);
   defs.append(waterImagePattern);
 
@@ -329,15 +274,6 @@ function renderMap(): void {
   waterTexture.setAttribute("fill", "url(#water-image-pattern)");
   waterTexture.setAttribute("pointer-events", "none");
   contentGroup.append(waterTexture);
-
-  // Preserve the existing subtle procedural detail as a separate overlay.
-  const waterDetail = document.createElementNS(svg.namespaceURI, "rect");
-  waterDetail.setAttribute("class", "water-detail");
-  waterDetail.setAttribute("width", String(viewWidth));
-  waterDetail.setAttribute("height", String(viewHeight));
-  waterDetail.setAttribute("fill", "url(#water-texture)");
-  waterDetail.setAttribute("pointer-events", "none");
-  contentGroup.append(waterDetail);
 
   countryFeatures = countryCollection.features as CountryFeature[];
   const countryLayer = document.createElementNS(svg.namespaceURI, "g");
