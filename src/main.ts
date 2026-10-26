@@ -455,13 +455,13 @@ function renderMap(): void {
     });
     cityLayer.append(shape);
   }
-  cityLayer.style.visibility = zoomScale >= 2 ? "visible" : "hidden";
+  cityLayer.style.visibility = zoomScale >= 1.2 ? "visible" : "hidden";
   contentGroup.append(cityLayer);
 
   applyViewTransform(false);
   loading.hidden = true;
   mapStatus.textContent = administrativeDataReady
-    ? `${countryFeatures.length.toLocaleString()} countries · ${allAdministrativeFeatures.length.toLocaleString()} state/province polygons · ${cityDataReady ? "urban areas ready" : "loading urban areas…"}`
+    ? `${countryFeatures.length.toLocaleString()} countries · ${allAdministrativeFeatures.length.toLocaleString()} state/province polygons · ${cityDataReady ? `${cityRecords.length.toLocaleString()} selectable urban footprints` : "loading urban areas…"}`
     : `${countryFeatures.length.toLocaleString()} countries · loading global state/province polygons…`;
 }
 
@@ -503,7 +503,7 @@ function applyViewTransform(animate = true): void {
   mapContent.style.transition = animate ? "transform 180ms ease-out" : "none";
   mapContent.setAttribute("transform", "translate(" + panX + " " + panY + ") scale(" + zoomScale + ")");
   const cityLayer = mapContent.querySelector<SVGGElement>(".city-layer");
-  if (cityLayer) cityLayer.style.visibility = zoomScale >= 2 ? "visible" : "hidden";
+  if (cityLayer) cityLayer.style.visibility = zoomScale >= 1.2 ? "visible" : "hidden";
 }
 
 function zoomAt(screenX: number, screenY: number, factor: number): void {
@@ -644,7 +644,7 @@ loadCountryGeometry();
 void loadCityGeometry()
   .then(() => {
     renderMap();
-    mapStatus.textContent = `Urban-area layer ready · ${cityAreaFeatures.length.toLocaleString()} footprints loaded; zoom in to select cities`;
+    mapStatus.textContent = `Urban-area layer ready · ${cityRecords.length.toLocaleString()} selectable footprints matched from ${cityAreaFeatures.length.toLocaleString()} shapes; zoom in to select cities`;
   })
   .catch((error) => {
     console.error("World at War urban-area geometry failed to load:", error);
