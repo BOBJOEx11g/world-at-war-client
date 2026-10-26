@@ -111,14 +111,15 @@ function renderMap(): void {
   defs.append(oceanPattern);
   svg.append(defs);
 
-  mapContent = document.createElementNS(svg.namespaceURI, "g");
-  mapContent.setAttribute("class", "map-content");
+  const contentGroup = document.createElementNS(svg.namespaceURI, "g") as SVGGElement;
+  mapContent = contentGroup;
+  contentGroup.setAttribute("class", "map-content");
   const ocean = document.createElementNS(svg.namespaceURI, "rect");
   ocean.setAttribute("class", "ocean");
   ocean.setAttribute("width", String(viewWidth));
   ocean.setAttribute("height", String(viewHeight));
   ocean.setAttribute("fill", "url(#ocean-grid)");
-  mapContent.append(ocean);
+  contentGroup.append(ocean);
 
   countryFeatures = countryCollection.features as CountryFeature[];
   const countryLayer = document.createElementNS(svg.namespaceURI, "g");
@@ -143,8 +144,8 @@ function renderMap(): void {
     });
     countryLayer.append(shape);
   }
-  mapContent.append(countryLayer);
-  svg.append(mapContent);
+  contentGroup.append(countryLayer);
+  svg.append(contentGroup);
   applyViewTransform(false);
   loading.hidden = true;
   mapStatus.textContent = `${countryFeatures.length.toLocaleString()} country features loaded · click a territory`;
