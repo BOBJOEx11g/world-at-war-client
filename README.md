@@ -2,6 +2,8 @@
 
 The browser client for **World at War**, a persistent, full-world grand-strategy game.
 
+The current sate can be found here: https://bobjoex11g.github.io/world-at-war-client/
+
 ## Current status
 
 The initial client scaffold includes:
