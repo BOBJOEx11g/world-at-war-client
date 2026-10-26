@@ -118,7 +118,7 @@ function renderMap(): void {
     shape.setAttribute("role", "button");
     shape.setAttribute("aria-label", country.properties.name ?? `Country ${countryId}`);
     shape.addEventListener("click", () => selectCountry(countryId));
-    shape.addEventListener("keydown", (event) => {
+    shape.addEventListener("keydown", (event: KeyboardEvent) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         selectCountry(countryId);
