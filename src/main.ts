@@ -301,6 +301,14 @@ function renderMap(): void {
     canalLayer.append(visibleLine);
 
     const midpoint = points[Math.floor(points.length / 2)];
+    const marker = document.createElementNS(svg.namespaceURI, "circle");
+    marker.setAttribute("cx", String(midpoint[0]));
+    marker.setAttribute("cy", String(midpoint[1]));
+    marker.setAttribute("r", "4.5");
+    marker.setAttribute("class", "canal-marker");
+    marker.setAttribute("pointer-events", "none");
+    canalLayer.append(marker);
+
     const label = document.createElementNS(svg.namespaceURI, "text");
     label.setAttribute("x", String(midpoint[0] + canal.labelOffset[0]));
     label.setAttribute("y", String(midpoint[1] + canal.labelOffset[1]));
