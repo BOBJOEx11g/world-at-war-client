@@ -60,7 +60,17 @@ const selectedDetail = document.querySelector<HTMLParagraphElement>("#selected-d
 const selectionCard = document.querySelector<HTMLElement>("#selection-card")!;
 
 let selectedId: string | null = null;
-let zoom = 1;
+let zoomScale = 1;
+let panX = 0;
+let panY = 0;
+let mapContent: SVGGElement | null = null;
+let isPanning = false;
+let pointerStartX = 0;
+let pointerStartY = 0;
+let panStartX = 0;
+let panStartY = 0;
+let didPan = false;
+let suppressNextClick = false;
 let viewWidth = 1200;
 let viewHeight = 650;
 let countryFeatures: CountryFeature[] = [];
@@ -83,7 +93,7 @@ function renderMap(): void {
   const fittedProjection = geoNaturalEarth1()
     .fitExtent([[18, 24], [Math.max(19, viewWidth - 18), Math.max(25, viewHeight - 28)]], countryCollection);
   const projection = geoNaturalEarth1()
-    .scale(fittedProjection.scale() * zoom)
+    .scale(fittedProjection.scale())
     .translate([viewWidth / 2, viewHeight / 2]);
   const path = geoPath(projection);
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
@@ -101,12 +111,14 @@ function renderMap(): void {
   defs.append(oceanPattern);
   svg.append(defs);
 
+  mapContent = document.createElementNS(svg.namespaceURI, "g");
+  mapContent.setAttribute("class", "map-content");
   const ocean = document.createElementNS(svg.namespaceURI, "rect");
   ocean.setAttribute("class", "ocean");
   ocean.setAttribute("width", String(viewWidth));
   ocean.setAttribute("height", String(viewHeight));
   ocean.setAttribute("fill", "url(#ocean-grid)");
-  svg.append(ocean);
+  mapContent.append(ocean);
 
   countryFeatures = countryCollection.features as CountryFeature[];
   const countryLayer = document.createElementNS(svg.namespaceURI, "g");
@@ -121,7 +133,13 @@ function renderMap(): void {
     shape.setAttribute("tabindex", "0");
     shape.setAttribute("role", "button");
     shape.setAttribute("aria-label", country.properties.name ?? `Country ${countryId}`);
-    shape.addEventListener("click", () => selectCountry(countryId));
+    shape.addEventListener("click", () => {
+      if (suppressNextClick) {
+        suppressNextClick = false;
+        return;
+      }
+      selectCountry(countryId);
+    });
     shape.addEventListener("keydown", (event) => {
       const keyboardEvent = event as KeyboardEvent;
       if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
@@ -131,7 +149,9 @@ function renderMap(): void {
     });
     countryLayer.append(shape);
   }
-  svg.append(countryLayer);
+  mapContent.append(countryLayer);
+  svg.append(mapContent);
+  applyViewTransform(false);
   loading.hidden = true;
   mapStatus.textContent = `${countryFeatures.length.toLocaleString()} country features loaded · click a territory`;
 }
@@ -150,9 +170,73 @@ function selectCountry(id: string): void {
   mapStatus.textContent = `Selected: ${name}`;
 }
 
-document.querySelector("#zoom-in")?.addEventListener("click", () => { zoom = Math.min(zoom * 1.25, 8); renderMap(); });
-document.querySelector("#zoom-out")?.addEventListener("click", () => { zoom = Math.max(zoom / 1.25, 1); renderMap(); });
-document.querySelector("#reset-view")?.addEventListener("click", () => { zoom = 1; renderMap(); });
+function applyViewTransform(animate = true): void {
+  if (!mapContent) return;
+  mapContent.style.transition = animate ? "transform 180ms ease-out" : "none";
+  mapContent.setAttribute("transform", "translate(" + panX + " " + panY + ") scale(" + zoomScale + ")");
+}
+
+function zoomAt(screenX: number, screenY: number, factor: number): void {
+  const nextScale = Math.max(1, Math.min(8, zoomScale * factor));
+  if (nextScale === zoomScale) return;
+  const mapX = (screenX - panX) / zoomScale;
+  const mapY = (screenY - panY) / zoomScale;
+  panX = screenX - mapX * nextScale;
+  panY = screenY - mapY * nextScale;
+  zoomScale = nextScale;
+  applyViewTransform();
+}
+
+function zoomAtCenter(factor: number): void {
+  zoomAt(viewWidth / 2, viewHeight / 2, factor);
+}
+
+document.querySelector("#zoom-in")?.addEventListener("click", () => zoomAtCenter(1.25));
+document.querySelector("#zoom-out")?.addEventListener("click", () => zoomAtCenter(1 / 1.25));
+document.querySelector("#reset-view")?.addEventListener("click", () => {
+  zoomScale = 1;
+  panX = 0;
+  panY = 0;
+  applyViewTransform();
+});
+
+svg.addEventListener("wheel", (event: WheelEvent) => {
+  event.preventDefault();
+  const bounds = svg.getBoundingClientRect();
+  zoomAt(event.clientX - bounds.left, event.clientY - bounds.top, event.deltaY < 0 ? 1.12 : 1 / 1.12);
+}, { passive: false });
+
+svg.addEventListener("pointerdown", (event: PointerEvent) => {
+  if (event.button !== 0) return;
+  isPanning = true;
+  didPan = false;
+  pointerStartX = event.clientX;
+  pointerStartY = event.clientY;
+  panStartX = panX;
+  panStartY = panY;
+  svg.setPointerCapture(event.pointerId);
+  if (mapContent) mapContent.style.transition = "none";
+});
+
+svg.addEventListener("pointermove", (event: PointerEvent) => {
+  if (!isPanning) return;
+  const dx = event.clientX - pointerStartX;
+  const dy = event.clientY - pointerStartY;
+  if (Math.abs(dx) + Math.abs(dy) > 4) didPan = true;
+  if (!didPan) return;
+  panX = panStartX + dx;
+  panY = panStartY + dy;
+  applyViewTransform(false);
+});
+
+function finishPan(): void {
+  if (!isPanning) return;
+  isPanning = false;
+  if (didPan) suppressNextClick = true;
+}
+
+svg.addEventListener("pointerup", finishPan);
+svg.addEventListener("pointercancel", finishPan);
 document.querySelector("#about-button")?.addEventListener("click", () => (document.querySelector<HTMLDialogElement>("#about-dialog")!).showModal());
 document.querySelector("#close-about")?.addEventListener("click", () => document.querySelector<HTMLDialogElement>("#about-dialog")!.close());
 
