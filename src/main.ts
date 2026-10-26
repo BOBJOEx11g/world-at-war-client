@@ -71,13 +71,17 @@ const countryCollection = feature(topology, countriesObject) as GeoJSON.FeatureC
 
 function renderMap(): void {
   const bounds = mapWrap.getBoundingClientRect();
-  viewWidth = Math.max(600, Math.floor(bounds.width));
-  viewHeight = Math.max(360, Math.floor(bounds.height));
+  // Use the actual container size: a forced 600px viewBox caused narrow layouts
+  // to crop or scale the map awkwardly when the browser was resized.
+  viewWidth = Math.max(1, Math.floor(bounds.width));
+  viewHeight = Math.max(1, Math.floor(bounds.height));
+  if (viewWidth <= 1 || viewHeight <= 1) return;
+
   svg.setAttribute("viewBox", `0 0 ${viewWidth} ${viewHeight}`);
   svg.replaceChildren();
 
   const fittedProjection = geoNaturalEarth1()
-    .fitExtent([[18, 24], [viewWidth - 18, viewHeight - 28]], countryCollection);
+    .fitExtent([[18, 24], [Math.max(19, viewWidth - 18), Math.max(25, viewHeight - 28)]], countryCollection);
   const projection = geoNaturalEarth1()
     .scale(fittedProjection.scale() * zoom)
     .translate([viewWidth / 2, viewHeight / 2]);
@@ -152,6 +156,15 @@ document.querySelector("#reset-view")?.addEventListener("click", () => { zoom = 
 document.querySelector("#about-button")?.addEventListener("click", () => (document.querySelector<HTMLDialogElement>("#about-dialog")!).showModal());
 document.querySelector("#close-about")?.addEventListener("click", () => document.querySelector<HTMLDialogElement>("#about-dialog")!.close());
 
-const resizeObserver = new ResizeObserver(() => renderMap());
+let resizeFrame = 0;
+const resizeObserver = new ResizeObserver(() => {
+  // Coalesce rapid resize events so a drag doesn't rebuild the SVG hundreds
+  // of times per second on slower devices.
+  if (resizeFrame) cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = 0;
+    renderMap();
+  });
+});
 resizeObserver.observe(mapWrap);
 renderMap();
