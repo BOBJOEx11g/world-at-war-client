@@ -1,7 +1,8 @@
 /**
- * Lazy-load first-level administrative boundaries (states/provinces).
- * Source: geoBoundaries gbOpen, CC BY 4.0. The API returns the current
- * source release metadata and a simplified GeoJSON download for each country.
+ * Loads the global first-level administrative geography from geoBoundaries gbOpen.
+ * All available ADM1 geometries are fetched and cached in memory so movement
+ * planning can use a world-wide region index rather than click-triggered data.
+ * Source: https://www.geoboundaries.org/ — CC BY 4.0, attribution required.
  */
 
 export type AdministrativeProperties = {
@@ -9,6 +10,9 @@ export type AdministrativeProperties = {
   shapeID?: string | number;
   shapeGroup?: string;
   shapeType?: string;
+  parentCountryId?: string;
+  administrativeLevel?: "state-province" | "county-district";
+  sourceBoundaryId?: string;
   [key: string]: unknown;
 };
 
@@ -28,62 +32,95 @@ type GeoBoundariesMetadata = {
   boundaryType?: string;
   boundaryYearRepresented?: string;
   boundaryLicense?: string;
+  boundaryName?: string;
   simplifiedGeometryGeoJSON?: string;
   gjDownloadURL?: string;
 };
 
-const boundaryCache = new Map<string, AdministrativeFeatureCollection | null>();
+const API_ROOT = "https://www.geoboundaries.org/api/current/gbOpen";
+let globalAdm1Promise: Promise<AdministrativeFeature[]> | null = null;
 
-export async function loadFirstLevelBoundaries(
-  iso3: string,
-): Promise<AdministrativeFeatureCollection | null> {
-  const countryCode = iso3.trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(countryCode)) return null;
-  if (boundaryCache.has(countryCode)) return boundaryCache.get(countryCode) ?? null;
-
-  const metadataResponse = await fetch(
-    `https://www.geoboundaries.org/api/current/gbOpen/${countryCode}/ADM1/`,
-    { headers: { accept: "application/json" } },
-  );
-  if (!metadataResponse.ok) {
-    if (metadataResponse.status === 404) {
-      boundaryCache.set(countryCode, null);
-      return null;
-    }
-    throw new Error(`geoBoundaries metadata request failed for ${countryCode}: HTTP ${metadataResponse.status}`);
+function stableRegionId(countryCode: string, feature: AdministrativeFeature, index: number): string {
+  const sourceId = feature.properties?.shapeID ?? feature.id;
+  if (sourceId !== undefined && sourceId !== null && String(sourceId).trim()) {
+    return `${countryCode}-ADM1-${String(sourceId).trim()}`;
   }
+  const name = String(feature.properties?.shapeName ?? "unnamed")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `${countryCode}-ADM1-${name || index}`;
+}
 
-  const metadata = (await metadataResponse.json()) as GeoBoundariesMetadata[] | GeoBoundariesMetadata;
-  const entry = Array.isArray(metadata) ? metadata[0] : metadata;
-  if (!entry) {
-    boundaryCache.set(countryCode, null);
-    return null;
-  }
-  const dataUrl = entry.simplifiedGeometryGeoJSON || entry.gjDownloadURL;
-  if (!dataUrl) {
-    boundaryCache.set(countryCode, null);
-    return null;
-  }
-
-  const dataResponse = await fetch(dataUrl, {
+async function fetchJson(url: string): Promise<unknown> {
+  const response = await fetch(url, {
     headers: { accept: "application/geo+json, application/json" },
   });
-  if (!dataResponse.ok) {
-    throw new Error(`geoBoundaries geometry request failed for ${countryCode}: HTTP ${dataResponse.status}`);
-  }
-  const collection = (await dataResponse.json()) as AdministrativeFeatureCollection;
-  if (collection.type !== "FeatureCollection" || !Array.isArray(collection.features)) {
-    throw new Error(`geoBoundaries returned invalid ADM1 GeoJSON for ${countryCode}`);
-  }
+  if (!response.ok) throw new Error(`Request failed: HTTP ${response.status} (${url})`);
+  return response.json() as Promise<unknown>;
+}
 
-  const normalized: AdministrativeFeatureCollection = {
-    ...collection,
-    features: collection.features.map((feature, index) => ({
-      ...feature,
-      id: feature.id ?? feature.properties?.shapeID ?? `${countryCode}-ADM1-${index}`,
-      properties: { ...(feature.properties ?? {}) },
-    })),
-  };
-  boundaryCache.set(countryCode, normalized);
-  return normalized;
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  task: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await task(items[index]!);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function loadGlobalAdm1(): Promise<AdministrativeFeature[]> {
+  const metadataPayload = await fetchJson(`${API_ROOT}/ALL/ADM1/`);
+  const metadata = (Array.isArray(metadataPayload) ? metadataPayload : [metadataPayload])
+    .filter((item): item is GeoBoundariesMetadata => Boolean(item && typeof item === "object"))
+    .filter((item) => typeof item.boundaryISO === "string" && /^[A-Z]{3}$/.test(item.boundaryISO))
+    .filter((item) => item.boundaryType === "ADM1");
+
+  const countryFeatures = await mapWithConcurrency(metadata, 8, async (entry) => {
+    const countryCode = entry.boundaryISO!;
+    const dataUrl = entry.simplifiedGeometryGeoJSON || entry.gjDownloadURL;
+    if (!dataUrl) return [] as AdministrativeFeature[];
+    try {
+      const payload = await fetchJson(dataUrl);
+      const collection = payload as AdministrativeFeatureCollection;
+      if (collection.type !== "FeatureCollection" || !Array.isArray(collection.features)) return [];
+      return collection.features.map((feature, index) => ({
+        ...feature,
+        id: stableRegionId(countryCode, feature, index),
+        properties: {
+          ...(feature.properties ?? {}),
+          parentCountryId: countryCode,
+          administrativeLevel: "state-province" as const,
+          sourceBoundaryId: entry.boundaryID ?? `${countryCode}-ADM1`,
+        },
+      }));
+    } catch (error) {
+      // One country's missing/temporarily unavailable data must not block the world map.
+      console.warn(`Unable to load ADM1 boundaries for ${countryCode}`, error);
+      return [] as AdministrativeFeature[];
+    }
+  });
+  return countryFeatures.flat();
+}
+
+/** Returns all available ADM1 polygons worldwide, cached as a single in-flight promise. */
+export function loadAllFirstLevelBoundaries(): Promise<AdministrativeFeature[]> {
+  if (!globalAdm1Promise) {
+    globalAdm1Promise = loadGlobalAdm1().catch((error) => {
+      globalAdm1Promise = null;
+      throw error;
+    });
+  }
+  return globalAdm1Promise;
 }
