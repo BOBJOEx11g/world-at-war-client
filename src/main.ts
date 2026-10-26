@@ -1,7 +1,4 @@
 import { geoNaturalEarth1, geoPath } from "d3-geo";
-import { feature } from "topojson-client";
-import type { GeometryCollection, Topology } from "topojson-specification";
-import worldAtlas from "world-atlas/countries-10m.json";
 import "./style.css";
 
 type CountryProperties = { name?: string; [key: string]: unknown };
@@ -75,9 +72,59 @@ let viewWidth = 1200;
 let viewHeight = 650;
 let countryFeatures: CountryFeature[] = [];
 
-const topology = worldAtlas as unknown as Topology;
-const countriesObject = topology.objects["countries"] as GeometryCollection<CountryProperties>;
-const countryCollection = feature(topology, countriesObject) as GeoJSON.FeatureCollection<GeoJSON.Geometry, CountryProperties>;
+const ADMIN0_GEOJSON_URL =
+  "https://raw.githubusercontent.com/datasets/geo-countries/ca3b7150caa5d3cc3fb108a87fc6e3d57bd97d99/data/countries.geojson";
+let countryCollection: GeoJSON.FeatureCollection<GeoJSON.Geometry, CountryProperties> = {
+  type: "FeatureCollection",
+  features: [],
+};
+
+function stableCountryId(name: string, properties: CountryProperties): string {
+  const iso3 = properties["ISO3166-1-Alpha-3"];
+  if (typeof iso3 === "string" && iso3.trim() && iso3 !== "-99") return iso3;
+  const slug = name
+    .normalize("NFD")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `NE-${slug || "unknown"}`;
+}
+
+async function loadCountryGeometry(): Promise<void> {
+  try {
+    const response = await fetch(ADMIN0_GEOJSON_URL, {
+      headers: { accept: "application/geo+json, application/json" },
+    });
+    if (!response.ok) throw new Error(`Country data request failed: HTTP ${response.status}`);
+    const dataset = (await response.json()) as {
+      type?: string;
+      features?: CountryFeature[];
+    };
+    if (dataset.type !== "FeatureCollection" || !Array.isArray(dataset.features)) {
+      throw new Error("Country data is not a GeoJSON FeatureCollection.");
+    }
+    if (dataset.features.length !== 258) {
+      throw new Error(`Expected 258 Natural Earth Admin 0 countries; received ${dataset.features.length}.`);
+    }
+    countryFeatures = dataset.features.map((feature) => {
+      const properties = feature.properties ?? {};
+      const name = typeof properties.name === "string" ? properties.name.trim() : "";
+      return {
+        ...feature,
+        id: stableCountryId(name, properties),
+        properties: { ...properties, name },
+      } as CountryFeature;
+    });
+    countryCollection = { type: "FeatureCollection", features: countryFeatures };
+    renderMap();
+  } catch (error) {
+    loading.hidden = false;
+    loading.textContent = "Unable to load 1:10m country geometry";
+    mapStatus.textContent = "Country data failed to load. Check the connection and refresh.";
+    console.error("World at War country geometry failed to load:", error);
+  }
+}
 
 function renderMap(): void {
   const bounds = mapWrap.getBoundingClientRect();
@@ -85,7 +132,7 @@ function renderMap(): void {
   // to crop or scale the map awkwardly when the browser was resized.
   viewWidth = Math.max(1, Math.floor(bounds.width));
   viewHeight = Math.max(1, Math.floor(bounds.height));
-  if (viewWidth <= 1 || viewHeight <= 1) return;
+  if (viewWidth <= 1 || viewHeight <= 1 || countryCollection.features.length === 0) return;
 
   svg.setAttribute("viewBox", `0 0 ${viewWidth} ${viewHeight}`);
   svg.replaceChildren();
@@ -261,4 +308,4 @@ const resizeObserver = new ResizeObserver(() => {
   });
 });
 resizeObserver.observe(mapWrap);
-renderMap();
+loadCountryGeometry();
