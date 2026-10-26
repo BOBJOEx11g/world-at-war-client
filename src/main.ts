@@ -44,7 +44,7 @@ app.innerHTML = `
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
       <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="reset-view">RESET VIEW</button></div></div>
-      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><svg id="world-map" role="img" aria-label="Interactive map of world countries"></svg><div class="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
+      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><svg id="world-map" role="img" aria-label="Interactive map of world countries"></svg><div class="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-canal"></i> Canal passage</span><span><i class="legend-ocean"></i> Ocean</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
       <div class="map-footer"><span id="map-status">Loading country geometry…</span><span>SCENARIO DATA: 2026 <i>·</i> MAP DATA: PROVISIONAL</span></div>
     </section>
   </main>
@@ -191,6 +191,74 @@ function renderMap(): void {
     tinyTargetLayer.append(hitTarget);
   }
   contentGroup.append(tinyTargetLayer);
+
+  // Strategic canals are rendered as real geographic map overlays. The
+  // centreline is deliberately separate from country borders and can later
+  // be linked to the naval path graph via its stable canal ID.
+  const canalLayer = document.createElementNS(svg.namespaceURI, "g");
+  canalLayer.setAttribute("class", "canal-layer");
+  const canals = [
+    {
+      id: "suez-canal",
+      name: "Suez Canal",
+      connects: "Mediterranean ↔ Red Sea",
+      coordinates: [[32.34, 30.70], [32.38, 30.95], [32.43, 31.20], [32.55, 31.35]] as [number, number][],
+      labelOffset: [9, -8] as [number, number],
+    },
+    {
+      id: "panama-canal",
+      name: "Panama Canal",
+      connects: "Caribbean ↔ Pacific",
+      coordinates: [[-79.92, 9.38], [-79.72, 9.10], [-79.55, 8.90], [-79.45, 8.60]] as [number, number][],
+      labelOffset: [9, -8] as [number, number],
+    },
+  ];
+  for (const canal of canals) {
+    const projected = canal.coordinates.map((coordinate) => projection(coordinate));
+    if (projected.some((point) => !point)) continue;
+    const points = projected as [number, number][];
+    const lineData = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point[0]} ${point[1]}`).join(" ");
+
+    const hitLine = document.createElementNS(svg.namespaceURI, "path");
+    hitLine.setAttribute("d", lineData);
+    hitLine.setAttribute("class", "canal-hit-line");
+    hitLine.setAttribute("data-canal-id", canal.id);
+    hitLine.setAttribute("tabindex", "0");
+    hitLine.setAttribute("role", "button");
+    hitLine.setAttribute("aria-label", `Inspect ${canal.name}, connecting ${canal.connects}`);
+    const inspectCanal = () => {
+      selectedName.textContent = canal.name;
+      selectedDetail.textContent = `Strategic passage · connects ${canal.connects}. Naval transit rules are being prepared for the route system.`;
+      selectionCard.classList.add("has-selection");
+      mapStatus.textContent = `Selected passage: ${canal.name}`;
+    };
+    hitLine.addEventListener("click", inspectCanal);
+    hitLine.addEventListener("keydown", (event) => {
+      const keyboardEvent = event as KeyboardEvent;
+      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+        keyboardEvent.preventDefault();
+        inspectCanal();
+      }
+    });
+    canalLayer.append(hitLine);
+
+    const visibleLine = document.createElementNS(svg.namespaceURI, "path");
+    visibleLine.setAttribute("d", lineData);
+    visibleLine.setAttribute("class", "canal-visible-line");
+    visibleLine.setAttribute("aria-hidden", "true");
+    canalLayer.append(visibleLine);
+
+    const midpoint = points[Math.floor(points.length / 2)];
+    const label = document.createElementNS(svg.namespaceURI, "text");
+    label.setAttribute("x", String(midpoint[0] + canal.labelOffset[0]));
+    label.setAttribute("y", String(midpoint[1] + canal.labelOffset[1]));
+    label.setAttribute("class", "canal-label");
+    label.setAttribute("pointer-events", "none");
+    label.textContent = canal.name;
+    canalLayer.append(label);
+  }
+  contentGroup.append(canalLayer);
+
   applyViewTransform(false);
   loading.hidden = true;
   mapStatus.textContent = `${countryFeatures.length.toLocaleString()} country features loaded · click a territory`;
