@@ -124,6 +124,12 @@ function renderMap(): void {
   countryFeatures = countryCollection.features as CountryFeature[];
   const countryLayer = document.createElementNS(svg.namespaceURI, "g");
   countryLayer.setAttribute("class", "country-layer");
+  contentGroup.append(countryLayer);
+
+  // Keep tiny standalone islands selectable even when their real geometry is
+  // only a few screen pixels wide. These transparent hit targets do not alter
+  // the displayed borders or the underlying geographic data.
+  const tinyTerritoryTargets: Array<{ id: string; name: string; x: number; y: number; radius: number }> = [];
 
   for (const country of countryFeatures) {
     const countryId = String(country.id ?? country.properties.name ?? "unknown");
@@ -143,8 +149,47 @@ function renderMap(): void {
       }
     });
     countryLayer.append(shape);
+
+    const bounds = shape.getBBox();
+    const largestDimension = Math.max(bounds.width, bounds.height);
+    if (largestDimension > 0 && largestDimension < 12) {
+      tinyTerritoryTargets.push({
+        id: countryId,
+        name: country.properties.name ?? `Country ${countryId}`,
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2,
+        radius: Math.max(7, largestDimension / 2 + 3),
+      });
+    }
   }
-  contentGroup.append(countryLayer);
+
+  const tinyTargetLayer = document.createElementNS(svg.namespaceURI, "g");
+  tinyTargetLayer.setAttribute("class", "tiny-territory-targets");
+  for (const target of tinyTerritoryTargets) {
+    const hitTarget = document.createElementNS(svg.namespaceURI, "circle");
+    hitTarget.setAttribute("cx", String(target.x));
+    hitTarget.setAttribute("cy", String(target.y));
+    hitTarget.setAttribute("r", String(target.radius));
+    hitTarget.setAttribute("fill", "transparent");
+    hitTarget.setAttribute("stroke", "none");
+    hitTarget.setAttribute("pointer-events", "all");
+    hitTarget.setAttribute("class", "tiny-territory-hit-target");
+    hitTarget.setAttribute("data-country-id", target.id);
+    hitTarget.setAttribute("tabindex", "0");
+    hitTarget.setAttribute("role", "button");
+    hitTarget.setAttribute("aria-label", `Select ${target.name}`);
+    hitTarget.append();
+    hitTarget.addEventListener("click", () => selectCountry(target.id));
+    hitTarget.addEventListener("keydown", (event) => {
+      const keyboardEvent = event as KeyboardEvent;
+      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+        keyboardEvent.preventDefault();
+        selectCountry(target.id);
+      }
+    });
+    tinyTargetLayer.append(hitTarget);
+  }
+  contentGroup.append(tinyTargetLayer);
   svg.append(contentGroup);
   applyViewTransform(false);
   loading.hidden = true;
