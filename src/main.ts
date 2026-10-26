@@ -1,4 +1,4 @@
-import { geoNaturalEarth1, geoPath } from "d3-geo";
+import { geoCentroid, geoNaturalEarth1, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 import worldAtlas from "world-atlas/countries-50m.json";
@@ -195,20 +195,23 @@ function renderMap(): void {
   // simplified polygon bounding box, and their targets sit above country
   // shapes so neighbouring paths cannot steal the click.
   const priorityCountryTargets = [
-    { name: "Aruba", coordinates: [-69.97, 12.52] as [number, number] },
-    { name: "Israel", coordinates: [35.00, 31.50] as [number, number] },
-    { name: "United Arab Emirates", coordinates: [54.30, 24.20] as [number, number] },
+    { name: "Aruba", fallbackCoordinates: [-69.97, 12.52] as [number, number] },
+    { name: "Israel", fallbackCoordinates: [34.85, 31.50] as [number, number] },
+    { name: "United Arab Emirates", fallbackCoordinates: [54.30, 24.20] as [number, number] },
   ];
   for (const target of priorityCountryTargets) {
-    const point = projection(target.coordinates);
-    if (!point) continue;
     const matchingFeature = countryFeatures.find(
       (country) => country.properties.name?.toLowerCase() === target.name.toLowerCase(),
     );
+    // Anchor the hit target to the actual feature geometry whenever available.
+    // Hard-coded coordinates can land in a neighbouring country or sea at this map scale.
+    const coordinates = matchingFeature ? geoCentroid(matchingFeature) as [number, number] : target.fallbackCoordinates;
+    const point = projection(coordinates);
+    if (!point) continue;
     const hitTarget = document.createElementNS(svg.namespaceURI, "circle") as SVGCircleElement;
     hitTarget.setAttribute("cx", String(point[0]));
     hitTarget.setAttribute("cy", String(point[1]));
-    hitTarget.setAttribute("r", target.name === "Aruba" ? "11" : "10");
+    hitTarget.setAttribute("r", target.name === "Aruba" ? "13" : "12");
     hitTarget.setAttribute("fill", "transparent");
     hitTarget.setAttribute("stroke", "none");
     hitTarget.setAttribute("pointer-events", "all");
