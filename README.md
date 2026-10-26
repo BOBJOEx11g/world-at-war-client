@@ -11,7 +11,7 @@ The initial client scaffold includes:
 - TypeScript + Vite.
 - Interactive SVG country map using Natural Earth 1:50m country geometry.
 - Country selection and map zoom controls.
-- Lazy-loaded state/province boundaries (ADM1) for the selected country, with selectable administrative areas.
+- A world-wide index of first-level state/province boundaries (ADM1), loaded independently of country selection, with selectable administrative areas for the selected country.
 - Shared biome and terrain tag vocabulary for future singleplayer and multiplayer province data.
 - A responsive strategy-game interface.
 - A GitHub Actions workflow for GitHub Pages deployment.
@@ -20,9 +20,11 @@ The initial client scaffold includes:
 
 ## Administrative boundaries
 
-First-level state/province boundaries are loaded on demand from [geoBoundaries](https://www.geoboundaries.org/) gbOpen data when a country is selected. The client uses the source-provided simplified GeoJSON when available, caches loaded country boundaries for the current session, and displays an attribution notice in the map status. geoBoundaries gbOpen data is licensed CC BY 4.0; see the [source licence and attribution guidance](https://www.geoboundaries.org/).
+The client loads the global index of available first-level state/province boundaries (ADM1) from [geoBoundaries](https://www.geoboundaries.org/) gbOpen metadata, then fetches the simplified geometry files with limited concurrency. The data is retained in memory independently of which country is selected; selecting a country filters the already-loaded global region set for display. Every region receives a stable source-based ID and a parent country ISO-3 link. A failed country geometry request is skipped without preventing the rest of the world from loading.
 
-Only the selected country’s ADM1 boundaries are loaded to avoid downloading a huge global boundary file at startup. Administrative units can be selected, but province ownership, biome assignments, and lower administrative levels are not implemented yet.
+geoBoundaries gbOpen data is licensed CC BY 4.0; see the [source licence and attribution guidance](https://www.geoboundaries.org/). The map displays source attribution.
+
+**Not implemented yet:** persistent server-side province records, city/municipality boundaries, and automatic parent assignment between lower-level areas and provinces. Administrative levels differ by country, and ADM2 often means a county or district rather than a city, so city boundaries must be sourced and classified carefully instead of relabelling every ADM2 polygon as a city.
 
 ## Run locally
 
