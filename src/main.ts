@@ -190,6 +190,56 @@ function renderMap(): void {
     });
     tinyTargetLayer.append(hitTarget);
   }
+  // Explicit geographic hit targets for small but important countries.
+  // Their centres come from longitude/latitude rather than a tiny or
+  // simplified polygon bounding box, and their targets sit above country
+  // shapes so neighbouring paths cannot steal the click.
+  const priorityCountryTargets = [
+    { name: "Aruba", coordinates: [-69.97, 12.52] as [number, number] },
+    { name: "Israel", coordinates: [35.00, 31.50] as [number, number] },
+    { name: "United Arab Emirates", coordinates: [54.30, 24.20] as [number, number] },
+  ];
+  for (const target of priorityCountryTargets) {
+    const point = projection(target.coordinates);
+    if (!point) continue;
+    const matchingFeature = countryFeatures.find(
+      (country) => country.properties.name?.toLowerCase() === target.name.toLowerCase(),
+    );
+    const hitTarget = document.createElementNS(svg.namespaceURI, "circle") as SVGCircleElement;
+    hitTarget.setAttribute("cx", String(point[0]));
+    hitTarget.setAttribute("cy", String(point[1]));
+    hitTarget.setAttribute("r", target.name === "Aruba" ? "11" : "10");
+    hitTarget.setAttribute("fill", "transparent");
+    hitTarget.setAttribute("stroke", "none");
+    hitTarget.setAttribute("pointer-events", "all");
+    hitTarget.setAttribute("class", "tiny-territory-hit-target priority-country-hit-target");
+    hitTarget.setAttribute("tabindex", "0");
+    hitTarget.setAttribute("role", "button");
+    hitTarget.setAttribute("aria-label", `Select ${target.name}`);
+    const selectPriorityCountry = () => {
+      if (matchingFeature) {
+        selectCountry(String(matchingFeature.id ?? matchingFeature.properties.name ?? target.name));
+      } else {
+        selectedId = null;
+        selectedName.textContent = target.name;
+        selectedDetail.textContent = "Geographic hit target. Detailed country geometry is not included in the current provisional map dataset.";
+        selectionCard.classList.add("has-selection");
+        for (const shape of svg.querySelectorAll<SVGPathElement>(".country-shape")) {
+          shape.classList.remove("selected");
+        }
+        mapStatus.textContent = `Selected: ${target.name} · geometry needs a higher-detail map source`;
+      }
+    };
+    hitTarget.addEventListener("click", selectPriorityCountry);
+    hitTarget.addEventListener("keydown", (event) => {
+      const keyboardEvent = event as KeyboardEvent;
+      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+        keyboardEvent.preventDefault();
+        selectPriorityCountry();
+      }
+    });
+    tinyTargetLayer.append(hitTarget);
+  }
   contentGroup.append(tinyTargetLayer);
 
   // Strategic canals are rendered as real geographic map overlays. The
@@ -215,8 +265,10 @@ function renderMap(): void {
   ];
   for (const canal of canals) {
     const projected = canal.coordinates.map((coordinate) => projection(coordinate));
-    if (projected.some((point) => !point)) continue;
-    const points = projected as [number, number][];
+    const points = projected.filter(
+      (point): point is [number, number] => point !== null,
+    );
+    if (points.length !== canal.coordinates.length) continue;
     const lineData = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point[0]} ${point[1]}`).join(" ");
 
     const hitLine = document.createElementNS(svg.namespaceURI, "path");
