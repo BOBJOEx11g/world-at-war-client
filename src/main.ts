@@ -90,11 +90,11 @@ function renderMap(): void {
   svg.setAttribute("viewBox", `0 0 ${viewWidth} ${viewHeight}`);
   svg.replaceChildren();
 
-  const fittedProjection = geoNaturalEarth1()
-    .fitExtent([[18, 24], [Math.max(19, viewWidth - 18), Math.max(25, viewHeight - 28)]], countryCollection);
+  // Keep the exact fitted projection. Reusing only its scale and replacing
+  // its translation shifts manually projected geographic markers away from
+  // the country geometry (notably the small-country hit targets and canals).
   const projection = geoNaturalEarth1()
-    .scale(fittedProjection.scale())
-    .translate([viewWidth / 2, viewHeight / 2]);
+    .fitExtent([[18, 24], [Math.max(19, viewWidth - 18), Math.max(25, viewHeight - 28)]], countryCollection);
   const path = geoPath(projection);
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
   const oceanPattern = document.createElementNS(defs.namespaceURI, "pattern");
@@ -230,11 +230,15 @@ function renderMap(): void {
         mapStatus.textContent = `Selected: ${target.name} · geometry needs a higher-detail map source`;
       }
     };
-    hitTarget.addEventListener("click", selectPriorityCountry);
+    hitTarget.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectPriorityCountry();
+    });
     hitTarget.addEventListener("keydown", (event) => {
       const keyboardEvent = event as KeyboardEvent;
       if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
         keyboardEvent.preventDefault();
+        keyboardEvent.stopPropagation();
         selectPriorityCountry();
       }
     });
