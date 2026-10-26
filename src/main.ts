@@ -1,4 +1,4 @@
-import { geoNaturalEarth1, geoPath } from "d3-geo";
+import { geoCentroid, geoDistance, geoNaturalEarth1, geoPath } from "d3-geo";
 import { BIOME_TAGS } from "./terrain";
 import { loadAllFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
 import "./style.css";
@@ -9,6 +9,9 @@ const waterTextureUrl = new URL("./water_texture.jpg", import.meta.url).href;
 type CountryProperties = { name?: string; [key: string]: unknown };
 type CountryFeature = GeoJSON.Feature<GeoJSON.Geometry, CountryProperties>;
 type BiomeFeature = GeoJSON.Feature<GeoJSON.Geometry, { BIOME_NAME?: string; [key: string]: unknown }>;
+type CityAreaProperties = { name?: string; NAME?: string; scalerank?: number; featurecla?: string; area_sqkm?: number; [key: string]: unknown };
+type CityAreaFeature = GeoJSON.Feature<GeoJSON.Geometry, CityAreaProperties>;
+type PopulatedPlaceFeature = GeoJSON.Feature<GeoJSON.Geometry, { name?: string; NAME?: string; nameascii?: string; adm0name?: string; [key: string]: unknown }>; 
 
 const BIOME_COLORS: Record<string, string> = {
   forest: "#7b9873",
@@ -62,13 +65,14 @@ app.innerHTML = `
       <ul class="status-list">
         <li><span class="status-check">✓</span><span>Client scaffold</span><span class="status-word">READY</span></li>
         <li><span class="status-check">✓</span><span>Selectable province polygons</span><span class="status-word">READY</span></li>
+        <li><span class="status-check">✓</span><span>Selectable urban-area polygons</span><span class="status-word">READY</span></li>
         <li><span class="status-pending">•</span><span>Detailed provinces & islands</span><span class="status-word pending">IN PROGRESS</span></li>
         <li><span class="status-pending">•</span><span>Multiplayer server</span><span class="status-word pending">PLANNED</span></li>
       </ul>
       <div class="section-heading">SUPPORTED BIOMES <span class="live-label">8 TAGS</span></div>
       <div class="biome-tags" aria-label="Supported biome tags">${BIOME_TAGS.map((biome) => `<span class="biome-tag">${biome}</span>`).join("")}</div>
       <p class="biome-note">Toggle the biome map to view broad ecological regions. This is a reference overlay, not yet province-level game terrain data.</p>
-      <div class="sidebar-note"><strong>*Map-data note</strong><p>Countries use Natural Earth Admin 0 geometry (258 features); state/province polygons use Natural Earth 1:10m Admin 1. Optional biome overlay: RESOLVE Ecoregions 2017, CC BY 4.0.</p></div>
+      <div class="sidebar-note"><strong>*Map-data note</strong><p>Countries use Natural Earth Admin 0 geometry; states/provinces use Natural Earth 1:10m Admin 1. City layer uses Natural Earth 1:50m urban footprints matched to nearby populated-place points. These are built-up areas, not official municipal borders. Optional biome overlay: RESOLVE Ecoregions 2017, CC BY 4.0.</p></div>
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
@@ -105,7 +109,11 @@ let viewHeight = 650;
 let countryFeatures: CountryFeature[] = [];
 let allAdministrativeFeatures: AdministrativeFeature[] = [];
 let administrativeDataReady = false;
+let cityAreaFeatures: CityAreaFeature[] = [];
+let populatedPlaceFeatures: PopulatedPlaceFeature[] = [];
+let cityDataReady = false;
 let selectedProvinceId: string | null = null;
+let selectedCityId: string | null = null;
 let biomeModeEnabled = false;
 let biomeFeatures: BiomeFeature[] = [];
 let biomeDataPromise: Promise<BiomeFeature[]> | null = null;
@@ -114,8 +122,48 @@ const mapLegend = document.querySelector<HTMLDivElement>("#map-legend")!;
 
 // Generalize the global ecoregion geometry slightly: this is a broad map overlay,
 // not navigation-grade data, and smaller paths render much faster in the browser.
+const CITY_AREAS_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_urban_areas.geojson";
+const POPULATED_PLACES_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_populated_places_simple.geojson";
+
 const BIOME_GEOJSON_URL =
   "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Resolve_Ecoregions/FeatureServer/0/query?where=1%3D1&outFields=BIOME_NAME&returnGeometry=true&outSR=4326&maxAllowableOffset=0.02&geometryPrecision=4&resultRecordCount=1000&f=geojson";
+
+async function loadCityGeometry(): Promise<void> {
+  const [areasResponse, placesResponse] = await Promise.all([
+    fetch(CITY_AREAS_GEOJSON_URL, { headers: { accept: "application/geo+json, application/json" }, signal: AbortSignal.timeout(25000) }),
+    fetch(POPULATED_PLACES_GEOJSON_URL, { headers: { accept: "application/geo+json, application/json" }, signal: AbortSignal.timeout(25000) }),
+  ]);
+  if (!areasResponse.ok) throw new Error(`Urban-area request failed: HTTP ${areasResponse.status}`);
+  if (!placesResponse.ok) throw new Error(`Populated-place request failed: HTTP ${placesResponse.status}`);
+  const [areas, places] = await Promise.all([areasResponse.json(), placesResponse.json()]) as [GeoJSON.FeatureCollection<GeoJSON.Geometry, CityAreaProperties>, GeoJSON.FeatureCollection<GeoJSON.Geometry, PopulatedPlaceFeature["properties"]>];
+  if (areas.type !== "FeatureCollection" || !Array.isArray(areas.features) || places.type !== "FeatureCollection" || !Array.isArray(places.features)) {
+    throw new Error("City data sources did not return valid GeoJSON FeatureCollections.");
+  }
+  cityAreaFeatures = areas.features as CityAreaFeature[];
+  populatedPlaceFeatures = places.features as PopulatedPlaceFeature[];
+  if (cityAreaFeatures.length === 0 || populatedPlaceFeatures.length === 0) throw new Error("City data source returned no features.");
+  cityDataReady = true;
+}
+
+function nearestCityName(feature: CityAreaFeature, index: number): { id: string; name: string; country: string } | null {
+  const center = geoCentroid(feature);
+  if (!Number.isFinite(center[0]) || !Number.isFinite(center[1])) return null;
+  let nearest: PopulatedPlaceFeature | null = null;
+  let nearestDistance = Infinity;
+  for (const place of populatedPlaceFeatures) {
+    if (!place.geometry || place.geometry.type !== "Point") continue;
+    const distance = geoDistance(center, place.geometry.coordinates as [number, number]);
+    if (distance < nearestDistance) { nearestDistance = distance; nearest = place; }
+  }
+  // These polygons describe dense built-up footprints, not legal municipal borders.
+  // Only attach a city label when a populated-place point is reasonably close.
+  if (!nearest || nearestDistance > 0.025) return null;
+  const props = nearest.properties ?? {};
+  const name = String(props.name ?? props.NAME ?? props.nameascii ?? "").trim();
+  if (!name) return null;
+  const country = String(props.adm0name ?? "Country unavailable");
+  return { id: `city-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, country };
+}
 
 async function loadBiomeGeometry(): Promise<BiomeFeature[]> {
   const response = await fetch(BIOME_GEOJSON_URL, {
@@ -370,21 +418,62 @@ function renderMap(): void {
     contentGroup.append(administrativeLayer);
   }
 
-  // City polygons will be appended here above the province layer. This dedicated
-  // top layer ensures city hitboxes win over their containing province hitboxes.
+  // City urban-footprint polygons are above provinces so they receive clicks first.
+  // The data shows built-up extent, not official municipal boundaries.
   const cityLayer = document.createElementNS(svg.namespaceURI, "g");
   cityLayer.setAttribute("class", "city-layer");
-  cityLayer.setAttribute("aria-label", "City polygons");
+  cityLayer.setAttribute("aria-label", "Urban-area polygons");
+  for (let index = 0; index < cityAreaFeatures.length; index++) {
+    const feature = cityAreaFeatures[index];
+    const city = nearestCityName(feature, index);
+    if (!city) continue;
+    const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
+    shape.setAttribute("d", path(feature) ?? "");
+    shape.setAttribute("class", "city-shape" + (selectedCityId === city.id ? " selected" : ""));
+    shape.setAttribute("data-city-id", city.id);
+    shape.setAttribute("data-city-name", city.name);
+    shape.setAttribute("data-city-country", city.country);
+    shape.setAttribute("tabindex", "0");
+    shape.setAttribute("role", "button");
+    shape.setAttribute("aria-label", `${city.name} urban area, ${city.country}`);
+    shape.setAttribute("pointer-events", "visibleFill");
+    shape.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectCity(city.id, city.name, city.country);
+    });
+    shape.addEventListener("keydown", (event) => {
+      const keyboardEvent = event as KeyboardEvent;
+      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+        keyboardEvent.preventDefault();
+        event.stopPropagation();
+        selectCity(city.id, city.name, city.country);
+      }
+    });
+    cityLayer.append(shape);
+  }
+  cityLayer.style.visibility = zoomScale >= 2 ? "visible" : "hidden";
   contentGroup.append(cityLayer);
 
   applyViewTransform(false);
   loading.hidden = true;
   mapStatus.textContent = administrativeDataReady
-    ? `${countryFeatures.length.toLocaleString()} countries · ${allAdministrativeFeatures.length.toLocaleString()} global state/province polygons visible`
+    ? `${countryFeatures.length.toLocaleString()} countries · ${allAdministrativeFeatures.length.toLocaleString()} state/province polygons · ${cityDataReady ? "urban areas ready" : "loading urban areas…"}`
     : `${countryFeatures.length.toLocaleString()} countries · loading global state/province polygons…`;
 }
 
+function selectCity(id: string, name: string, country: string): void {
+  selectedCityId = id;
+  selectedProvinceId = null;
+  selectedName.textContent = name;
+  selectedDetail.textContent = `${name} · ${country}. Urban footprint selected; this is built-up-area geography, not an official municipal boundary.`;
+  selectionCard.classList.add("has-selection");
+  for (const shape of svg.querySelectorAll<SVGPathElement>(".city-shape")) shape.classList.toggle("selected", shape.dataset.cityId === id);
+  for (const shape of svg.querySelectorAll<SVGPathElement>(".admin-shape")) shape.classList.remove("selected");
+  mapStatus.textContent = `Selected urban area: ${name} · ${country}`;
+}
+
 function selectProvince(id: string): void {
+  selectedCityId = null;
   selectedProvinceId = id;
   const province = allAdministrativeFeatures.find((feature) =>
     String(feature.id ?? feature.properties.shapeID ?? feature.properties.shapeName ?? "unknown") === id
@@ -397,7 +486,7 @@ function selectProvince(id: string): void {
   );
   const countryName = country?.properties.name ?? String(province.properties.admin ?? parentCode ?? "Country unavailable");
   selectedName.textContent = provinceName;
-  selectedDetail.textContent = `${provinceName} · ${countryName}. State/province polygon selected. City polygons have not been added yet.`;
+  selectedDetail.textContent = `${provinceName} · ${countryName}. State/province polygon selected.`;
   selectionCard.classList.add("has-selection");
   for (const shape of svg.querySelectorAll<SVGPathElement>(".admin-shape")) {
     shape.classList.toggle("selected", shape.dataset.provinceId === id);
@@ -409,6 +498,8 @@ function applyViewTransform(animate = true): void {
   if (!mapContent) return;
   mapContent.style.transition = animate ? "transform 180ms ease-out" : "none";
   mapContent.setAttribute("transform", "translate(" + panX + " " + panY + ") scale(" + zoomScale + ")");
+  const cityLayer = mapContent.querySelector<SVGGElement>(".city-layer");
+  if (cityLayer) cityLayer.style.visibility = zoomScale >= 2 ? "visible" : "hidden";
 }
 
 function zoomAt(screenX: number, screenY: number, factor: number): void {
@@ -546,12 +637,21 @@ const resizeObserver = new ResizeObserver(() => {
 });
 resizeObserver.observe(mapWrap);
 loadCountryGeometry();
+void loadCityGeometry()
+  .then(() => {
+    renderMap();
+    mapStatus.textContent = `Urban-area layer ready · ${cityAreaFeatures.length.toLocaleString()} footprints loaded; zoom in to select cities`;
+  })
+  .catch((error) => {
+    console.error("World at War urban-area geometry failed to load:", error);
+    mapStatus.textContent = "Urban-area data failed to load; country and province selection still works.";
+  });
 void loadAllFirstLevelBoundaries()
   .then((features) => {
     allAdministrativeFeatures = features;
     administrativeDataReady = true;
     renderMap();
-    mapStatus.textContent = "Global state/province layer visible · " + allAdministrativeFeatures.length.toLocaleString() + " polygons";
+    mapStatus.textContent = "Global state/province layer visible · " + allAdministrativeFeatures.length.toLocaleString() + " polygons" + (cityDataReady ? ` · ${cityAreaFeatures.length.toLocaleString()} urban footprints loaded` : " · urban areas loading…");
   })
   .catch((error) => {
     console.error("World at War global administrative geography failed to load:", error);
