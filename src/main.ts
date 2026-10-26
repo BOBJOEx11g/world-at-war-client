@@ -11,7 +11,8 @@ type CountryFeature = GeoJSON.Feature<GeoJSON.Geometry, CountryProperties>;
 type BiomeFeature = GeoJSON.Feature<GeoJSON.Geometry, { BIOME_NAME?: string; [key: string]: unknown }>;
 type CityAreaProperties = { name?: string; NAME?: string; scalerank?: number; featurecla?: string; area_sqkm?: number; [key: string]: unknown };
 type CityAreaFeature = GeoJSON.Feature<GeoJSON.Geometry, CityAreaProperties>;
-type PopulatedPlaceFeature = GeoJSON.Feature<GeoJSON.Geometry, { name?: string; NAME?: string; nameascii?: string; adm0name?: string; [key: string]: unknown }>; 
+type PopulatedPlaceFeature = GeoJSON.Feature<GeoJSON.Geometry, { name?: string; NAME?: string; nameascii?: string; adm0name?: string; [key: string]: unknown }>;
+type CityRecord = { feature: CityAreaFeature; id: string; name: string; country: string };
 
 const BIOME_COLORS: Record<string, string> = {
   forest: "#7b9873",
@@ -110,6 +111,7 @@ let countryFeatures: CountryFeature[] = [];
 let allAdministrativeFeatures: AdministrativeFeature[] = [];
 let administrativeDataReady = false;
 let cityAreaFeatures: CityAreaFeature[] = [];
+let cityRecords: CityRecord[] = [];
 let populatedPlaceFeatures: PopulatedPlaceFeature[] = [];
 let cityDataReady = false;
 let selectedProvinceId: string | null = null;
@@ -142,6 +144,10 @@ async function loadCityGeometry(): Promise<void> {
   cityAreaFeatures = areas.features as CityAreaFeature[];
   populatedPlaceFeatures = places.features as PopulatedPlaceFeature[];
   if (cityAreaFeatures.length === 0 || populatedPlaceFeatures.length === 0) throw new Error("City data source returned no features.");
+  cityRecords = cityAreaFeatures.flatMap((feature, index) => {
+    const city = nearestCityName(feature, index);
+    return city ? [{ feature, ...city }] : [];
+  });
   cityDataReady = true;
 }
 
@@ -423,30 +429,29 @@ function renderMap(): void {
   const cityLayer = document.createElementNS(svg.namespaceURI, "g");
   cityLayer.setAttribute("class", "city-layer");
   cityLayer.setAttribute("aria-label", "Urban-area polygons");
-  for (let index = 0; index < cityAreaFeatures.length; index++) {
-    const feature = cityAreaFeatures[index];
-    const city = nearestCityName(feature, index);
+  for (const cityRecord of cityRecords) {
+    const { feature, id: cityId, name: cityName, country: cityCountry } = cityRecord;
     if (!city) continue;
     const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
     shape.setAttribute("d", path(feature) ?? "");
-    shape.setAttribute("class", "city-shape" + (selectedCityId === city.id ? " selected" : ""));
-    shape.setAttribute("data-city-id", city.id);
-    shape.setAttribute("data-city-name", city.name);
-    shape.setAttribute("data-city-country", city.country);
+    shape.setAttribute("class", "city-shape" + (selectedCityId === cityId ? " selected" : ""));
+    shape.setAttribute("data-city-id", cityId);
+    shape.setAttribute("data-city-name", cityName);
+    shape.setAttribute("data-city-country", cityCountry);
     shape.setAttribute("tabindex", "0");
     shape.setAttribute("role", "button");
-    shape.setAttribute("aria-label", `${city.name} urban area, ${city.country}`);
+    shape.setAttribute("aria-label", `${cityName} urban area, ${cityCountry}`);
     shape.setAttribute("pointer-events", "visibleFill");
     shape.addEventListener("click", (event) => {
       event.stopPropagation();
-      selectCity(city.id, city.name, city.country);
+      selectCity(cityId, cityName, cityCountry);
     });
     shape.addEventListener("keydown", (event) => {
       const keyboardEvent = event as KeyboardEvent;
       if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
         keyboardEvent.preventDefault();
         event.stopPropagation();
-        selectCity(city.id, city.name, city.country);
+        selectCity(cityId, cityName, cityCountry);
       }
     });
     cityLayer.append(shape);
