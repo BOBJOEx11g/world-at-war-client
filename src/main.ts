@@ -76,13 +76,11 @@ function renderMap(): void {
   svg.setAttribute("viewBox", `0 0 ${viewWidth} ${viewHeight}`);
   svg.replaceChildren();
 
+  const fittedProjection = geoNaturalEarth1()
+    .fitExtent([[18, 24], [viewWidth - 18, viewHeight - 28]], countryCollection);
   const projection = geoNaturalEarth1()
-    .fitExtent([[18, 24], [viewWidth - 18, viewHeight - 28]], countryCollection)
-    .scale((geoNaturalEarth1().fitExtent([[18, 24], [viewWidth - 18, viewHeight - 28]], countryCollection).scale()) * zoom)
-    .translate([
-      viewWidth / 2 + (viewWidth / 2 - 0) * (1 - zoom),
-      viewHeight / 2 + (viewHeight / 2 - 0) * (1 - zoom)
-    ]);
+    .scale(fittedProjection.scale() * zoom)
+    .translate([viewWidth / 2, viewHeight / 2]);
   const path = geoPath(projection);
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
   const oceanPattern = document.createElementNS(defs.namespaceURI, "pattern");
