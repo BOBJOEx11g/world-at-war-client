@@ -19,17 +19,17 @@ app.innerHTML = `
     <aside class="sidebar">
       <div class="eyebrow">WORLD OVERVIEW</div>
       <h1>The world is<br/><em>in your hands.</em></h1>
-      <p class="intro">A persistent, full-world grand strategy game. Every nation has a place on the map.</p>
+      <p class="intro">A persistent, full-world grand strategy game. Territory is selected at province and city level.</p>
       <div class="stat-grid">
         <div class="stat"><span>SCENARIO</span><strong>2026</strong></div>
-        <div class="stat"><span>MAP LAYER</span><strong>Countries</strong></div>
+        <div class="stat"><span>MAP LAYER</span><strong>Provinces</strong></div>
         <div class="stat"><span>SERVER</span><strong class="warning-text">Offline</strong></div>
         <div class="stat"><span>MAP SOURCE</span><strong>Natural Earth*</strong></div>
       </div>
       <div class="section-heading">SELECTED TERRITORY <span class="live-label">MAP</span></div>
       <section class="selection-card" id="selection-card">
         <div class="selection-icon">◎</div>
-        <div><h2 id="selected-name">Select a country</h2><p id="selected-detail">Click any country on the map to inspect it.</p></div>
+        <div><h2 id="selected-name">Select a province or city</h2><p id="selected-detail">Click a state/province polygon. City polygons will take priority when added.</p></div>
       </section>
       <div class="section-heading">PROJECT STATUS</div>
       <ul class="status-list">
@@ -46,7 +46,7 @@ app.innerHTML = `
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
       <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="reset-view">RESET VIEW</button></div></div>
-      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><svg id="world-map" role="img" aria-label="Interactive map of world countries"></svg><div class="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
+      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><svg id="world-map" role="img" aria-label="Interactive map of state and province polygons across the world"></svg><div class="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
       <div class="map-footer"><span id="map-status">Loading country geometry…</span><span>SCENARIO DATA: 2026 <i>·</i> MAP DATA: PROVISIONAL</span></div>
     </section>
   </main>
@@ -61,7 +61,6 @@ const selectedName = document.querySelector<HTMLHeadingElement>("#selected-name"
 const selectedDetail = document.querySelector<HTMLParagraphElement>("#selected-detail")!;
 const selectionCard = document.querySelector<HTMLElement>("#selection-card")!;
 
-let selectedId: string | null = null;
 let zoomScale = 1;
 let panX = 0;
 let panY = 0;
@@ -77,9 +76,7 @@ let viewWidth = 1200;
 let viewHeight = 650;
 let countryFeatures: CountryFeature[] = [];
 let allAdministrativeFeatures: AdministrativeFeature[] = [];
-let administrativeFeatures: AdministrativeFeature[] = [];
 let administrativeDataReady = false;
-let administrativeCountryId: string | null = null;
 let selectedProvinceId: string | null = null;
 
 const ADMIN0_GEOJSON_URL =
@@ -192,21 +189,11 @@ function renderMap(): void {
     const countryId = String(country.id ?? country.properties.name ?? "unknown");
     const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
     shape.setAttribute("d", path(country) ?? "");
-    shape.setAttribute("class", `country-shape${selectedId === countryId ? " selected" : ""}`);
-    shape.setAttribute("data-country-id", countryId);
-    shape.setAttribute("tabindex", "0");
-    shape.setAttribute("role", "button");
+    shape.setAttribute("class", "country-shape");
     shape.setAttribute("aria-label", country.properties.name ?? `Country ${countryId}`);
-    // Only the actual polygon fill receives pointer events, not its outline.
-    shape.setAttribute("pointer-events", "visibleFill");
-    shape.addEventListener("click", () => selectCountry(countryId));
-    shape.addEventListener("keydown", (event) => {
-      const keyboardEvent = event as KeyboardEvent;
-      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-        keyboardEvent.preventDefault();
-        selectCountry(countryId);
-      }
-    });
+    // Countries are a visual base layer only. Territory selection belongs to
+    // province polygons and, when added, city polygons.
+    shape.setAttribute("pointer-events", "none");
     countryLayer.append(shape);
   }
 
@@ -242,6 +229,13 @@ function renderMap(): void {
     contentGroup.append(administrativeLayer);
   }
 
+  // City polygons will be appended here above the province layer. This dedicated
+  // top layer ensures city hitboxes win over their containing province hitboxes.
+  const cityLayer = document.createElementNS(svg.namespaceURI, "g");
+  cityLayer.setAttribute("class", "city-layer");
+  cityLayer.setAttribute("aria-label", "City polygons");
+  contentGroup.append(cityLayer);
+
   applyViewTransform(false);
   loading.hidden = true;
   mapStatus.textContent = administrativeDataReady
@@ -249,48 +243,6 @@ function renderMap(): void {
     : `${countryFeatures.length.toLocaleString()} countries · loading global state/province polygons…`;
 }
 
-function zoomToCountry(id: string): void {
-  const shape = svg.querySelector<SVGPathElement>(`.country-shape[data-country-id="${CSS.escape(id)}"]`);
-  if (!shape) return;
-  const bounds = shape.getBBox();
-  if (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width < 0.1 || bounds.height < 0.1) return;
-  const padding = 44;
-  const fitScale = Math.min((viewWidth - padding * 2) / Math.max(bounds.width, 1), (viewHeight - padding * 2) / Math.max(bounds.height, 1));
-  zoomScale = Math.max(1, Math.min(18, fitScale));
-  panX = viewWidth / 2 - (bounds.x + bounds.width / 2) * zoomScale;
-  panY = viewHeight / 2 - (bounds.y + bounds.height / 2) * zoomScale;
-  applyViewTransform();
-}
-
-function selectCountry(id: string): void {
-  selectedId = id;
-  selectedProvinceId = null;
-  const country = countryFeatures.find((feature) => String(feature.id ?? feature.properties.name ?? "unknown") === id);
-  if (!country) return;
-  const name = country.properties.name ?? ("Country " + id);
-  const iso3 = country.properties["ISO3166-1-Alpha-3"];
-  administrativeFeatures = typeof iso3 === "string" && iso3 !== "-99"
-    ? allAdministrativeFeatures.filter((feature) => feature.properties.parentCountryId === iso3)
-    : [];
-  administrativeCountryId = administrativeFeatures.length > 0 ? id : null;
-  selectedName.textContent = name;
-  selectionCard.classList.add("has-selection");
-  for (const shape of svg.querySelectorAll<SVGPathElement>(".country-shape")) {
-    shape.classList.toggle("selected", shape.dataset.countryId === id);
-  }
-  if (!administrativeDataReady) {
-    selectedDetail.textContent = name + " · global state/province boundaries are still loading.";
-    mapStatus.textContent = "Selected: " + name + " · loading global administrative geography…";
-  } else if (administrativeFeatures.length > 0) {
-    selectedDetail.textContent = name + " · " + administrativeFeatures.length.toLocaleString() + " first-level administrative areas in the global layer.";
-    mapStatus.textContent = name + ": " + administrativeFeatures.length.toLocaleString() + " states/provinces · geoBoundaries (CC BY 4.0)";
-  } else {
-    selectedDetail.textContent = name + " · no first-level boundary data was available from the global source.";
-    mapStatus.textContent = "Selected: " + name + " · no ADM1 data available";
-  }
-  renderMap();
-  zoomToCountry(id);
-}
 function selectProvince(id: string): void {
   selectedProvinceId = id;
   const province = allAdministrativeFeatures.find((feature) =>
@@ -303,13 +255,9 @@ function selectProvince(id: string): void {
     String(feature.id ?? feature.properties.name ?? "unknown") === parentCode
   );
   const countryName = country?.properties.name ?? String(province.properties.admin ?? parentCode ?? "Country unavailable");
-  selectedId = parentCode ?? selectedId;
   selectedName.textContent = provinceName;
   selectedDetail.textContent = `${provinceName} · ${countryName}. State/province polygon selected. City polygons have not been added yet.`;
   selectionCard.classList.add("has-selection");
-  for (const shape of svg.querySelectorAll<SVGPathElement>(".country-shape")) {
-    shape.classList.toggle("selected", shape.dataset.countryId === selectedId);
-  }
   for (const shape of svg.querySelectorAll<SVGPathElement>(".admin-shape")) {
     shape.classList.toggle("selected", shape.dataset.provinceId === id);
   }
@@ -408,20 +356,6 @@ void loadAllFirstLevelBoundaries()
   .then((features) => {
     allAdministrativeFeatures = features;
     administrativeDataReady = true;
-    if (selectedId) {
-      const country = countryFeatures.find((feature) => String(feature.id ?? feature.properties.name ?? "unknown") === selectedId);
-      const iso3 = country?.properties["ISO3166-1-Alpha-3"];
-      administrativeFeatures = typeof iso3 === "string" && iso3 !== "-99"
-        ? allAdministrativeFeatures.filter((feature) => feature.properties.parentCountryId === iso3)
-        : [];
-      administrativeCountryId = administrativeFeatures.length > 0 ? selectedId : null;
-      if (country) {
-        const name = country.properties.name ?? ("Country " + selectedId);
-        selectedDetail.textContent = administrativeFeatures.length
-          ? name + " · " + administrativeFeatures.length.toLocaleString() + " first-level administrative areas loaded. Select a state or province on the map."
-          : name + " · no first-level boundary data was available from the global source.";
-      }
-    }
     renderMap();
     mapStatus.textContent = "Global state/province layer visible · " + allAdministrativeFeatures.length.toLocaleString() + " polygons";
   })
@@ -429,5 +363,5 @@ void loadAllFirstLevelBoundaries()
     console.error("World at War global administrative geography failed to load:", error);
     administrativeDataReady = false;
     mapStatus.textContent = "Global state/province data failed to load. Check the connection and refresh.";
-    if (selectedId) selectedDetail.textContent = "Global state/province boundaries failed to load. Check the connection and refresh.";
+    selectedDetail.textContent = "Global state/province boundaries failed to load. Check the connection and refresh.";
   });
