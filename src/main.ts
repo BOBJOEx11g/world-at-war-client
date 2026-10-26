@@ -249,9 +249,9 @@ function renderMap(): void {
   }
   contentGroup.append(tinyTargetLayer);
 
-  // Strategic canals are rendered as real geographic map overlays. The
-  // centreline is deliberately separate from country borders and can later
-  // be linked to the naval path graph via its stable canal ID.
+  // Strategic canals are drawn as narrow water channels over land. Keep
+  // their geographic centrelines and stable IDs so naval routing can use the
+  // same data later; do not add map labels or decorative point markers.
   const canalLayer = document.createElementNS(svg.namespaceURI, "g");
   canalLayer.setAttribute("class", "canal-layer");
   const canals = [
@@ -260,14 +260,12 @@ function renderMap(): void {
       name: "Suez Canal",
       connects: "Mediterranean ↔ Red Sea",
       coordinates: [[32.34, 30.70], [32.38, 30.95], [32.43, 31.20], [32.55, 31.35]] as [number, number][],
-      labelOffset: [9, -8] as [number, number],
     },
     {
       id: "panama-canal",
       name: "Panama Canal",
       connects: "Caribbean ↔ Pacific",
       coordinates: [[-79.92, 9.38], [-79.72, 9.10], [-79.55, 8.90], [-79.45, 8.60]] as [number, number][],
-      labelOffset: [9, -8] as [number, number],
     },
   ];
   for (const canal of canals) {
@@ -301,44 +299,20 @@ function renderMap(): void {
     });
     canalLayer.append(hitLine);
 
-    const visibleLine = document.createElementNS(svg.namespaceURI, "path");
-    visibleLine.setAttribute("d", lineData);
-    visibleLine.setAttribute("class", "canal-visible-line");
-    visibleLine.setAttribute("aria-hidden", "true");
-    canalLayer.append(visibleLine);
+    // Draw the canal as water with a subtle dark bank/edge underneath.
+    // The water channel follows the real geographic centreline; it is not a
+    // point marker or a text annotation.
+    const bankLine = document.createElementNS(svg.namespaceURI, "path");
+    bankLine.setAttribute("d", lineData);
+    bankLine.setAttribute("class", "canal-bank-line");
+    bankLine.setAttribute("aria-hidden", "true");
+    canalLayer.append(bankLine);
 
-    const midpoint = points[Math.floor(points.length / 2)];
-    if (!midpoint) continue;
-    const marker = document.createElementNS(svg.namespaceURI, "circle");
-    marker.setAttribute("cx", String(midpoint[0]));
-    marker.setAttribute("cy", String(midpoint[1]));
-    marker.setAttribute("r", "7");
-    marker.setAttribute("class", "canal-marker");
-    marker.setAttribute("pointer-events", "all");
-    marker.setAttribute("tabindex", "0");
-    marker.setAttribute("role", "button");
-    marker.setAttribute("aria-label", `Inspect ${canal.name}`);
-    marker.addEventListener("click", (event) => {
-      event.stopPropagation();
-      inspectCanal();
-    });
-    marker.addEventListener("keydown", (event) => {
-      const keyboardEvent = event as KeyboardEvent;
-      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-        keyboardEvent.preventDefault();
-        keyboardEvent.stopPropagation();
-        inspectCanal();
-      }
-    });
-    canalLayer.append(marker);
-
-    const label = document.createElementNS(svg.namespaceURI, "text");
-    label.setAttribute("x", String(midpoint[0] + canal.labelOffset[0]));
-    label.setAttribute("y", String(midpoint[1] + canal.labelOffset[1]));
-    label.setAttribute("class", "canal-label");
-    label.setAttribute("pointer-events", "none");
-    label.textContent = canal.name;
-    canalLayer.append(label);
+    const waterLine = document.createElementNS(svg.namespaceURI, "path");
+    waterLine.setAttribute("d", lineData);
+    waterLine.setAttribute("class", "canal-water-line");
+    waterLine.setAttribute("aria-hidden", "true");
+    canalLayer.append(waterLine);
   }
   contentGroup.append(canalLayer);
 
