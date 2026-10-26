@@ -1,4 +1,5 @@
 import { geoNaturalEarth1, geoPath } from "d3-geo";
+import { BIOME_TAGS } from "./terrain";
 import "./style.css";
 
 type CountryProperties = { name?: string; [key: string]: unknown };
@@ -36,6 +37,9 @@ app.innerHTML = `
         <li><span class="status-pending">•</span><span>Detailed provinces & islands</span><span class="status-word pending">IN PROGRESS</span></li>
         <li><span class="status-pending">•</span><span>Multiplayer server</span><span class="status-word pending">PLANNED</span></li>
       </ul>
+      <div class="section-heading">SUPPORTED BIOMES <span class="live-label">8 TAGS</span></div>
+      <div class="biome-tags" aria-label="Supported biome tags">${BIOME_TAGS.map((biome) => `<span class="biome-tag">${biome}</span>`).join("")}</div>
+      <p class="biome-note">Biome vocabulary is ready for singleplayer. Province-level assignments await province boundaries.</p>
       <div class="sidebar-note"><strong>*Map-data note</strong><p>The map uses Natural Earth 1:10m Admin 0 – Countries geometry (258 features). Country shapes are also their click targets; no oversized helper hitboxes are used.</p></div>
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
