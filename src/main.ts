@@ -151,23 +151,28 @@ async function loadCityGeometry(): Promise<void> {
   cityDataReady = true;
 }
 
-function nearestCityName(feature: CityAreaFeature, index: number): { id: string; name: string; country: string } | null {
+function nearestCityName(feature: CityAreaFeature, index: number): { id: string; name: string; country: string } {
   const center = geoCentroid(feature);
-  if (!Number.isFinite(center[0]) || !Number.isFinite(center[1])) return null;
   let nearest: PopulatedPlaceFeature | null = null;
   let nearestDistance = Infinity;
-  for (const place of populatedPlaceFeatures) {
-    if (!place.geometry || place.geometry.type !== "Point") continue;
-    const distance = geoDistance(center, place.geometry.coordinates as [number, number]);
-    if (distance < nearestDistance) { nearestDistance = distance; nearest = place; }
+  if (Number.isFinite(center[0]) && Number.isFinite(center[1])) {
+    for (const place of populatedPlaceFeatures) {
+      if (!place.geometry || place.geometry.type !== "Point") continue;
+      const distance = geoDistance(center, place.geometry.coordinates as [number, number]);
+      if (distance < nearestDistance) { nearestDistance = distance; nearest = place; }
+    }
   }
-  // These polygons describe dense built-up footprints, not legal municipal borders.
-  // Only attach a city label when a populated-place point is reasonably close.
-  if (!nearest || nearestDistance > 0.025) return null;
-  const props = nearest.properties ?? {};
-  const name = String(props.name ?? props.NAME ?? props.nameascii ?? "").trim();
-  if (!name) return null;
-  const country = String(props.adm0name ?? "Country unavailable");
+
+  // Never discard an urban footprint just because its matching settlement point
+  // is missing or farther away. Rendering every footprint prevents an empty city
+  // layer; labels are best-effort metadata, not a condition for drawing geometry.
+  const areaProps = feature.properties ?? {};
+  const placeProps = nearest?.properties ?? {};
+  const areaName = String(areaProps.name ?? areaProps.NAME ?? "").trim();
+  const placeName = String(placeProps.name ?? placeProps.NAME ?? placeProps.nameascii ?? "").trim();
+  const useNearestPlace = Boolean(placeName && nearestDistance <= 0.08);
+  const name = useNearestPlace ? placeName : areaName || placeName || `Urban area ${index + 1}`;
+  const country = String(placeProps.adm0name ?? placeProps.ADM0NAME ?? placeProps.admin ?? placeProps.ADMIN ?? "Country unavailable");
   return { id: `city-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, country };
 }
 
@@ -429,6 +434,7 @@ function renderMap(): void {
   const cityLayer = document.createElementNS(svg.namespaceURI, "g");
   cityLayer.setAttribute("class", "city-layer");
   cityLayer.setAttribute("aria-label", "Urban-area polygons");
+  cityLayer.setAttribute("pointer-events", "auto");
   for (const cityRecord of cityRecords) {
     const { feature, id: cityId, name: cityName, country: cityCountry } = cityRecord;
     const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
@@ -455,7 +461,7 @@ function renderMap(): void {
     });
     cityLayer.append(shape);
   }
-  cityLayer.style.visibility = zoomScale >= 1.2 ? "visible" : "hidden";
+  cityLayer.style.visibility = "visible";
   contentGroup.append(cityLayer);
 
   applyViewTransform(false);
@@ -503,7 +509,7 @@ function applyViewTransform(animate = true): void {
   mapContent.style.transition = animate ? "transform 180ms ease-out" : "none";
   mapContent.setAttribute("transform", "translate(" + panX + " " + panY + ") scale(" + zoomScale + ")");
   const cityLayer = mapContent.querySelector<SVGGElement>(".city-layer");
-  if (cityLayer) cityLayer.style.visibility = zoomScale >= 1.2 ? "visible" : "hidden";
+  if (cityLayer) cityLayer.style.visibility = "visible";
 }
 
 function zoomAt(screenX: number, screenY: number, factor: number): void {
