@@ -1,8 +1,10 @@
 import { geoNaturalEarth1, geoPath } from "d3-geo";
-import waterTextureUrl from "./water_texture.jpg";
 import { BIOME_TAGS } from "./terrain";
 import { loadAllFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
 import "./style.css";
+
+// Vite resolves this local asset to a cache-busted production URL.
+const waterTextureUrl = new URL("./water_texture.jpg", import.meta.url).href;
 
 type CountryProperties = { name?: string; [key: string]: unknown };
 type CountryFeature = GeoJSON.Feature<GeoJSON.Geometry, CountryProperties>;
