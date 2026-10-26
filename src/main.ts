@@ -1,6 +1,6 @@
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { BIOME_TAGS } from "./terrain";
-import { loadFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
+import { loadAllFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
 import "./style.css";
 
 type CountryProperties = { name?: string; [key: string]: unknown };
@@ -76,7 +76,9 @@ let suppressNextClick = false;
 let viewWidth = 1200;
 let viewHeight = 650;
 let countryFeatures: CountryFeature[] = [];
+let allAdministrativeFeatures: AdministrativeFeature[] = [];
 let administrativeFeatures: AdministrativeFeature[] = [];
+let administrativeDataReady = false;
 let administrativeCountryId: string | null = null;
 let selectedProvinceId: string | null = null;
 
@@ -241,54 +243,39 @@ function renderMap(): void {
 
   applyViewTransform(false);
   loading.hidden = true;
-  mapStatus.textContent = `${countryFeatures.length.toLocaleString()} country features loaded · click a territory`;
+  mapStatus.textContent = administrativeDataReady
+    ? `${countryFeatures.length.toLocaleString()} countries · global state/province dataset loaded`
+    : `${countryFeatures.length.toLocaleString()} countries · loading global state/province dataset…`;
 }
 
 function selectCountry(id: string): void {
   selectedId = id;
   selectedProvinceId = null;
-  administrativeFeatures = [];
-  administrativeCountryId = null;
   const country = countryFeatures.find((feature) => String(feature.id ?? feature.properties.name ?? "unknown") === id);
   if (!country) return;
-  const name = country.properties.name ?? `Country ${id}`;
+  const name = country.properties.name ?? ("Country " + id);
+  const iso3 = country.properties["ISO3166-1-Alpha-3"];
+  administrativeFeatures = typeof iso3 === "string" && iso3 !== "-99"
+    ? allAdministrativeFeatures.filter((feature) => feature.properties.parentCountryId === iso3)
+    : [];
+  administrativeCountryId = administrativeFeatures.length > 0 ? id : null;
   selectedName.textContent = name;
-  selectedDetail.textContent = `Country selected. Loading states/provinces where available. Map ID: ${id}.`;
   selectionCard.classList.add("has-selection");
   for (const shape of svg.querySelectorAll<SVGPathElement>(".country-shape")) {
     shape.classList.toggle("selected", shape.dataset.countryId === id);
   }
-  mapStatus.textContent = `Selected: ${name} · loading states/provinces…`;
-  renderMap();
-
-  const iso3Value = country.properties["ISO3166-1-Alpha-3"];
-  if (typeof iso3Value === "string" && iso3Value !== "-99") {
-    void loadFirstLevelBoundaries(iso3Value)
-      .then((collection) => {
-        if (selectedId !== id) return;
-        administrativeFeatures = collection?.features ?? [];
-        administrativeCountryId = administrativeFeatures.length > 0 ? id : null;
-        if (administrativeFeatures.length > 0) {
-          selectedDetail.textContent = `${name} · ${administrativeFeatures.length.toLocaleString()} first-level administrative areas loaded. Select a state or province on the map.`;
-          mapStatus.textContent = `${name}: ${administrativeFeatures.length.toLocaleString()} states/provinces · geoBoundaries (CC BY 4.0)`;
-        } else {
-          selectedDetail.textContent = `${name} · no first-level boundary data was available from the source.`;
-          mapStatus.textContent = `Selected: ${name} · no ADM1 data available`;
-        }
-        renderMap();
-      })
-      .catch((error) => {
-        if (selectedId !== id) return;
-        selectedDetail.textContent = `${name} · could not load state/province boundaries. Check the connection and try selecting the country again.`;
-        mapStatus.textContent = `Selected: ${name} · administrative boundary load failed`;
-        console.error("World at War administrative boundaries failed to load:", error);
-      });
+  if (!administrativeDataReady) {
+    selectedDetail.textContent = name + " · global state/province boundaries are still loading.";
+    mapStatus.textContent = "Selected: " + name + " · loading global administrative geography…";
+  } else if (administrativeFeatures.length > 0) {
+    selectedDetail.textContent = name + " · " + administrativeFeatures.length.toLocaleString() + " first-level administrative areas loaded. Select a state or province on the map.";
+    mapStatus.textContent = name + ": " + administrativeFeatures.length.toLocaleString() + " states/provinces · geoBoundaries (CC BY 4.0)";
   } else {
-    selectedDetail.textContent = `${name} · this map feature has no usable ISO-3 code for administrative-boundary lookup.`;
-    mapStatus.textContent = `Selected: ${name} · no ISO-3 code`;
+    selectedDetail.textContent = name + " · no first-level boundary data was available from the global source.";
+    mapStatus.textContent = "Selected: " + name + " · no ADM1 data available";
   }
+  renderMap();
 }
-
 function selectProvince(id: string): void {
   selectedProvinceId = id;
   const province = administrativeFeatures.find((feature) =>
@@ -395,3 +382,30 @@ const resizeObserver = new ResizeObserver(() => {
 });
 resizeObserver.observe(mapWrap);
 loadCountryGeometry();
+void loadAllFirstLevelBoundaries()
+  .then((features) => {
+    allAdministrativeFeatures = features;
+    administrativeDataReady = true;
+    if (selectedId) {
+      const country = countryFeatures.find((feature) => String(feature.id ?? feature.properties.name ?? "unknown") === selectedId);
+      const iso3 = country?.properties["ISO3166-1-Alpha-3"];
+      administrativeFeatures = typeof iso3 === "string" && iso3 !== "-99"
+        ? allAdministrativeFeatures.filter((feature) => feature.properties.parentCountryId === iso3)
+        : [];
+      administrativeCountryId = administrativeFeatures.length > 0 ? selectedId : null;
+      if (country) {
+        const name = country.properties.name ?? ("Country " + selectedId);
+        selectedDetail.textContent = administrativeFeatures.length
+          ? name + " · " + administrativeFeatures.length.toLocaleString() + " first-level administrative areas loaded. Select a state or province on the map."
+          : name + " · no first-level boundary data was available from the global source.";
+      }
+    }
+    renderMap();
+    mapStatus.textContent = "Global administrative dataset ready · " + allAdministrativeFeatures.length.toLocaleString() + " states/provinces";
+  })
+  .catch((error) => {
+    console.error("World at War global administrative geography failed to load:", error);
+    administrativeDataReady = false;
+    mapStatus.textContent = "Global state/province data failed to load. Check the connection and refresh.";
+    if (selectedId) selectedDetail.textContent = "Global state/province boundaries failed to load. Check the connection and refresh.";
+  });
