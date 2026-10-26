@@ -42,8 +42,8 @@ h1 em { color: #ffffff; font-weight: 400; }
 .selection-card { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 13px; margin-bottom: 25px; border: 1px solid var(--line); background: #0d151e; }
 .selection-card.has-selection { border-color: #756746; }
 .selection-icon { display: grid; place-items: center; flex: 0 0 36px; height: 36px; border: 1px solid #3c4d58; color: var(--accent); font-size: 23px; }
-.selection-card h2 { margin: 0 0 5px; font-size: 13px; font-weight: 600; }
-.selection-card p { margin: 0; color: #8799a7; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.selection-card h2 { margin: 0 0 5px; color: #ffffff; font-size: 13px; font-weight: 600; }
+.selection-card p { margin: 0; color: #c5d0d7; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .status-list { display: flex; flex-direction: column; gap: 14px; padding: 0; margin: 2px 0 24px; list-style: none; }
 .status-list li { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 7px; color: #c5d0d7; font-size: 10px; }
 .status-check { color: #8dc4a1; }
