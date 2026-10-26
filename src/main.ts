@@ -8,14 +8,14 @@ type CountryFeature = GeoJSON.Feature<GeoJSON.Geometry, CountryProperties>;
 type BiomeFeature = GeoJSON.Feature<GeoJSON.Geometry, { BIOME_NAME?: string; [key: string]: unknown }>;
 
 const BIOME_COLORS: Record<string, string> = {
-  forest: "#397b54",
-  rainforest: "#176348",
-  grassland: "#a5aa55",
-  savanna: "#c3a04f",
-  desert: "#c58a59",
-  shrubland: "#7e9364",
-  tundra: "#a9c9c6",
-  wetland: "#4d9990",
+  forest: "#7b9873",
+  rainforest: "#557f68",
+  grassland: "#b9ae78",
+  savanna: "#c6a36b",
+  desert: "#c6a078",
+  shrubland: "#9b9c76",
+  tundra: "#b7c1b5",
+  wetland: "#7da69b",
 };
 
 function biomeTagForFeature(feature: BiomeFeature): string {
@@ -215,7 +215,7 @@ function renderMap(): void {
   const gridLine = document.createElementNS(defs.namespaceURI, "path");
   gridLine.setAttribute("d", "M 36 0 L 0 0 0 36");
   gridLine.setAttribute("fill", "none");
-  gridLine.setAttribute("stroke", "#193344");
+  gridLine.setAttribute("stroke", "#a9a08b");
   gridLine.setAttribute("stroke-width", "0.6");
   oceanPattern.append(gridLine);
   defs.append(oceanPattern);
@@ -263,7 +263,7 @@ function renderMap(): void {
     "M 48 45 q 4 -1.5 8 0 t 8 0 " +
     "M 1 51 q 3 -1 6 0");
   rippleLines.setAttribute("fill", "none");
-  rippleLines.setAttribute("stroke", "#78b5c0");
+  rippleLines.setAttribute("stroke", "#6e8e8a");
   rippleLines.setAttribute("stroke-width", "0.45");
   rippleLines.setAttribute("stroke-opacity", "0.15");
   const rippleMotion = document.createElementNS(defs.namespaceURI, "animateTransform");
@@ -285,7 +285,7 @@ function renderMap(): void {
   const hatch = document.createElementNS(defs.namespaceURI, "path");
   hatch.setAttribute("d", "M -2 2 L 2 -2 M 0 9 L 9 0 M 7 11 L 11 7");
   hatch.setAttribute("fill", "none");
-  hatch.setAttribute("stroke", "#f2f0d8");
+  hatch.setAttribute("stroke", "#665d4e");
   hatch.setAttribute("stroke-opacity", "0.17");
   hatch.setAttribute("stroke-width", "0.65");
   biomeTexture.append(hatch);
@@ -344,7 +344,7 @@ function renderMap(): void {
       const fill = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
       fill.setAttribute("d", d);
       fill.setAttribute("class", "biome-region biome-" + biome);
-      fill.setAttribute("fill", BIOME_COLORS[biome] ?? "#718477");
+      fill.setAttribute("fill", BIOME_COLORS[biome] ?? "#9b927e");
       fill.setAttribute("aria-hidden", "true");
       fill.setAttribute("pointer-events", "none");
       biomeLayer.append(fill);
