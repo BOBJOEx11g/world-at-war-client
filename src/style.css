@@ -75,6 +75,7 @@ h1 em { color: var(--accent); font-weight: 400; }
 .map-legend span { display: flex; align-items: center; gap: 6px; }
 .map-legend i { display: inline-block; width: 9px; height: 9px; }
 .legend-country { background: var(--land); border: 1px solid #72918b; }
+.legend-province { background: transparent; border: 1px solid #d9c07f; }
 .legend-selected { background: #b38e4f; }
 .legend-ocean { background: #0d202d; border: 1px solid #284351; }
 .map-coordinates { position: absolute; right: 16px; bottom: 18px; color: #718491; font-size: 8px; letter-spacing: .12em; }
