@@ -309,9 +309,24 @@ function renderMap(): void {
     const marker = document.createElementNS(svg.namespaceURI, "circle");
     marker.setAttribute("cx", String(midpoint[0]));
     marker.setAttribute("cy", String(midpoint[1]));
-    marker.setAttribute("r", "4.5");
+    marker.setAttribute("r", "7");
     marker.setAttribute("class", "canal-marker");
-    marker.setAttribute("pointer-events", "none");
+    marker.setAttribute("pointer-events", "all");
+    marker.setAttribute("tabindex", "0");
+    marker.setAttribute("role", "button");
+    marker.setAttribute("aria-label", `Inspect ${canal.name}`);
+    marker.addEventListener("click", (event) => {
+      event.stopPropagation();
+      inspectCanal();
+    });
+    marker.addEventListener("keydown", (event) => {
+      const keyboardEvent = event as KeyboardEvent;
+      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+        keyboardEvent.preventDefault();
+        keyboardEvent.stopPropagation();
+        inspectCanal();
+      }
+    });
     canalLayer.append(marker);
 
     const label = document.createElementNS(svg.namespaceURI, "text");
