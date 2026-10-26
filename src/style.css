@@ -101,3 +101,17 @@ dialog p { color: #aab8c2; font-size: 13px; line-height: 1.6; }
 .admin-shape { fill: #d6b56d; fill-opacity: .035; stroke: #e4cf91; stroke-opacity: .96; stroke-width: .8; vector-effect: non-scaling-stroke; cursor: pointer; outline: none; }
 .admin-shape:hover, .admin-shape:focus-visible { fill: #e0c47b; fill-opacity: .18; stroke: #fff0bf; stroke-opacity: 1; stroke-width: 1.35; }
 .admin-shape.selected { fill: #f0d28a; fill-opacity: .28; stroke: #fff0bf; stroke-opacity: 1; stroke-width: 1.6; }
+
+
+/* Optional biome display mode: colours and light hatching remain beneath province hitboxes. */
+.map-actions button#toggle-biomes { color: #b8d8b0; border-color: #486653; }
+.map-actions button#toggle-biomes.is-active { color: #e8f4d8; background: #244434; border-color: #7aab7d; }
+.map-actions button:disabled { opacity: .65; cursor: wait; }
+.biome-layer { pointer-events: none; }
+.biome-region { stroke: #263c32; stroke-width: .25; stroke-opacity: .3; vector-effect: non-scaling-stroke; }
+.biome-texture { opacity: 1; pointer-events: none; }
+.legend-biome { border: 1px solid #d3e0c8; }
+.map-legend { max-width: min(620px, calc(100% - 36px)); flex-wrap: wrap; row-gap: 8px; }
+@media (max-width: 480px) {
+  .map-legend { max-width: calc(100% - 16px); max-height: 35%; overflow: auto; flex-wrap: wrap; }
+}
