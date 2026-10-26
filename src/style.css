@@ -63,7 +63,9 @@ h1 em { color: var(--accent); font-weight: 400; }
 .map-actions button { min-width: 32px; height: 30px; padding: 0 9px; border: 1px solid #2a3b49; background: #111d28; color: #c7d1d8; font-size: 12px; }
 .map-actions button:last-child { margin-left: 5px; color: #aebbc4; font-size: 9px; letter-spacing: .1em; }
 .map-wrap { position: relative; flex: 1; min-height: 420px; overflow: hidden; background: #0c1b27; }
-#world-map { display: block; width: 100%; height: 100%; min-height: 420px; }
+#world-map { display: block; width: 100%; height: 100%; min-height: 420px; cursor: grab; touch-action: none; user-select: none; }
+#world-map:active { cursor: grabbing; }
+.map-content { transform-box: view-box; transform-origin: 0 0; will-change: transform; }
 .ocean { fill: #0d202d; }
 .country-shape { fill: var(--land); stroke: #72918b; stroke-width: .55; vector-effect: non-scaling-stroke; cursor: pointer; transition: fill .12s ease, stroke .12s ease; outline: none; }
 .country-shape:hover, .country-shape:focus-visible { fill: var(--land-hover); stroke: #d7d0b4; stroke-width: 1.25; }
