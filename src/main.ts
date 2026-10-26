@@ -24,8 +24,8 @@ function biomeTagForFeature(feature: BiomeFeature): string {
   if (name.includes("tundra") || name === "n/a") return "tundra";
   if (name.includes("flooded") || name.includes("mangrove")) return "wetland";
   if (name.includes("mediterranean") || name.includes("montane grassland")) return "shrubland";
-  if (name.includes("temperate grassland") || name.includes("grasslands, savannas")) return "grassland";
   if (name.includes("tropical") && name.includes("grassland")) return "savanna";
+  if (name.includes("temperate grassland") || name.includes("grasslands, savannas")) return "grassland";
   if (name.includes("moist broadleaf")) return "rainforest";
   return "forest";
 }
@@ -65,7 +65,7 @@ app.innerHTML = `
       <div class="section-heading">SUPPORTED BIOMES <span class="live-label">8 TAGS</span></div>
       <div class="biome-tags" aria-label="Supported biome tags">${BIOME_TAGS.map((biome) => `<span class="biome-tag">${biome}</span>`).join("")}</div>
       <p class="biome-note">Toggle the biome map to view broad ecological regions. This is a reference overlay, not yet province-level game terrain data.</p>
-      <div class="sidebar-note"><strong>*Map-data note</strong><p>Countries use Natural Earth Admin 0 geometry (258 features); worldwide state/province polygons use Natural Earth 1:10m Admin 1. Both layers use real polygon geometry rather than oversized helper hitboxes.</p></div>
+      <div class="sidebar-note"><strong>*Map-data note</strong><p>Countries use Natural Earth Admin 0 geometry (258 features); state/province polygons use Natural Earth 1:10m Admin 1. Optional biome overlay: RESOLVE Ecoregions 2017, CC BY 4.0.</p></div>
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
