@@ -220,8 +220,8 @@ function renderMap(): void {
   oceanPattern.append(gridLine);
   defs.append(oceanPattern);
 
-  // Procedural water texture: SVG turbulence creates a seamless, deterministic
-  // low-frequency ripple field locally. No image downloads or per-frame animation.
+  // Fine-grained procedural water: restrained noise plus small, gently moving
+  // ripples. Keep the tile small so it reads as water, not giant contour waves.
   const waterFilter = document.createElementNS(defs.namespaceURI, "filter");
   waterFilter.setAttribute("id", "water-ripple-noise");
   waterFilter.setAttribute("x", "0");
@@ -230,41 +230,49 @@ function renderMap(): void {
   waterFilter.setAttribute("height", "100%");
   const turbulence = document.createElementNS(defs.namespaceURI, "feTurbulence");
   turbulence.setAttribute("type", "fractalNoise");
-  turbulence.setAttribute("baseFrequency", "0.025 0.055");
-  turbulence.setAttribute("numOctaves", "2");
+  turbulence.setAttribute("baseFrequency", "0.085 0.14");
+  turbulence.setAttribute("numOctaves", "1");
   turbulence.setAttribute("seed", "17");
   turbulence.setAttribute("stitchTiles", "stitch");
   turbulence.setAttribute("result", "water-noise");
   const tintNoise = document.createElementNS(defs.namespaceURI, "feColorMatrix");
   tintNoise.setAttribute("type", "matrix");
   tintNoise.setAttribute("values",
-    "0.20 0.20 0.20 0 0.02 " +
-    "0.20 0.20 0.20 0 0.16 " +
-    "0.20 0.20 0.20 0 0.22 " +
-    "0 0 0 0.42 0");
+    "0.16 0.16 0.16 0 0.02 " +
+    "0.16 0.16 0.16 0 0.13 " +
+    "0.16 0.16 0.16 0 0.18 " +
+    "0 0 0 0.25 0");
   waterFilter.append(turbulence, tintNoise);
   defs.append(waterFilter);
 
   const waterPattern = document.createElementNS(defs.namespaceURI, "pattern");
   waterPattern.setAttribute("id", "water-texture");
-  waterPattern.setAttribute("width", "180");
-  waterPattern.setAttribute("height", "140");
+  waterPattern.setAttribute("width", "76");
+  waterPattern.setAttribute("height", "56");
   waterPattern.setAttribute("patternUnits", "userSpaceOnUse");
   const noiseTile = document.createElementNS(defs.namespaceURI, "rect");
-  noiseTile.setAttribute("width", "180");
-  noiseTile.setAttribute("height", "140");
+  noiseTile.setAttribute("width", "76");
+  noiseTile.setAttribute("height", "56");
   noiseTile.setAttribute("filter", "url(#water-ripple-noise)");
-  noiseTile.setAttribute("opacity", "0.42");
+  noiseTile.setAttribute("opacity", "0.18");
   const rippleLines = document.createElementNS(defs.namespaceURI, "path");
   rippleLines.setAttribute("d",
-    "M 8 24 Q 25 18 42 24 T 76 24 T 110 24 T 144 24 T 178 24 " +
-    "M -8 58 Q 12 51 32 58 T 72 58 T 112 58 T 152 58 T 192 58 " +
-    "M 14 96 Q 32 89 50 96 T 86 96 T 122 96 T 158 96 " +
-    "M -12 126 Q 6 120 24 126 T 60 126 T 96 126 T 132 126 T 168 126");
+    "M 3 10 q 5 -2 10 0 t 10 0 " +
+    "M 39 21 q 4 -1.5 8 0 t 8 0 " +
+    "M 14 34 q 5 -2 10 0 t 10 0 " +
+    "M 48 45 q 4 -1.5 8 0 t 8 0 " +
+    "M 1 51 q 3 -1 6 0");
   rippleLines.setAttribute("fill", "none");
   rippleLines.setAttribute("stroke", "#78b5c0");
-  rippleLines.setAttribute("stroke-width", "0.8");
-  rippleLines.setAttribute("stroke-opacity", "0.19");
+  rippleLines.setAttribute("stroke-width", "0.45");
+  rippleLines.setAttribute("stroke-opacity", "0.15");
+  const rippleMotion = document.createElementNS(defs.namespaceURI, "animateTransform");
+  rippleMotion.setAttribute("attributeName", "transform");
+  rippleMotion.setAttribute("type", "translate");
+  rippleMotion.setAttribute("values", "0 0; 2 1; 0 0");
+  rippleMotion.setAttribute("dur", "14s");
+  rippleMotion.setAttribute("repeatCount", "indefinite");
+  rippleLines.append(rippleMotion);
   waterPattern.append(noiseTile, rippleLines);
   defs.append(waterPattern);
 
