@@ -45,7 +45,7 @@ app.innerHTML = `
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
-      <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="reset-view">RESET VIEW</button></div></div>
+      <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="reset-view">RESET VIEW</button></div></div>
       <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><svg id="world-map" role="img" aria-label="Interactive map of state and province polygons across the world"></svg><div class="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
       <div class="map-footer"><span id="map-status">Loading country geometry…</span><span>SCENARIO DATA: 2026 <i>·</i> MAP DATA: PROVISIONAL</span></div>
     </section>
@@ -65,6 +65,7 @@ let zoomScale = 1;
 let panX = 0;
 let panY = 0;
 let mapContent: SVGGElement | null = null;
+let mapProjection: ReturnType<typeof geoNaturalEarth1> | null = null;
 let isPanning = false;
 let pointerStartX = 0;
 let pointerStartY = 0;
@@ -149,6 +150,7 @@ function renderMap(): void {
   // the country geometry (notably the small-country hit targets and canals).
   const projection = geoNaturalEarth1()
     .fitExtent([[18, 24], [Math.max(19, viewWidth - 18), Math.max(25, viewHeight - 28)]], countryCollection);
+  mapProjection = projection;
   const path = geoPath(projection);
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
   const oceanPattern = document.createElementNS(defs.namespaceURI, "pattern");
@@ -283,8 +285,19 @@ function zoomAtCenter(factor: number): void {
   zoomAt(viewWidth / 2, viewHeight / 2, factor);
 }
 
-document.querySelector("#zoom-in")?.addEventListener("click", () => zoomAtCenter(1.25));
-document.querySelector("#zoom-out")?.addEventListener("click", () => zoomAtCenter(1 / 1.25));
+function focusMapCoordinate(longitude: number, latitude: number, scale: number): void {
+  if (!mapProjection) return;
+  const projected = mapProjection([longitude, latitude]);
+  if (!projected) return;
+  zoomScale = Math.max(1, Math.min(1000, scale));
+  panX = viewWidth / 2 - projected[0] * zoomScale;
+  panY = viewHeight / 2 - projected[1] * zoomScale;
+  applyViewTransform();
+}
+
+document.querySelector("#zoom-in")?.addEventListener("click", () => zoomAtCenter(1.6));
+document.querySelector("#zoom-out")?.addEventListener("click", () => zoomAtCenter(1 / 1.6));
+document.querySelector("#zoom-caribbean")?.addEventListener("click", () => focusMapCoordinate(-68, 17, 5.5));
 document.querySelector("#reset-view")?.addEventListener("click", () => {
   zoomScale = 1;
   panX = 0;
