@@ -269,7 +269,7 @@ function applyViewTransform(animate = true): void {
 }
 
 function zoomAt(screenX: number, screenY: number, factor: number): void {
-  const nextScale = Math.max(1, Math.min(40, zoomScale * factor));
+  const nextScale = Math.max(1, Math.min(300, zoomScale * factor));
   if (nextScale === zoomScale) return;
   const mapX = (screenX - panX) / zoomScale;
   const mapY = (screenY - panY) / zoomScale;
