@@ -220,6 +220,54 @@ function renderMap(): void {
   oceanPattern.append(gridLine);
   defs.append(oceanPattern);
 
+  // Procedural water texture: SVG turbulence creates a seamless, deterministic
+  // low-frequency ripple field locally. No image downloads or per-frame animation.
+  const waterFilter = document.createElementNS(defs.namespaceURI, "filter");
+  waterFilter.setAttribute("id", "water-ripple-noise");
+  waterFilter.setAttribute("x", "0");
+  waterFilter.setAttribute("y", "0");
+  waterFilter.setAttribute("width", "100%");
+  waterFilter.setAttribute("height", "100%");
+  const turbulence = document.createElementNS(defs.namespaceURI, "feTurbulence");
+  turbulence.setAttribute("type", "fractalNoise");
+  turbulence.setAttribute("baseFrequency", "0.025 0.055");
+  turbulence.setAttribute("numOctaves", "2");
+  turbulence.setAttribute("seed", "17");
+  turbulence.setAttribute("stitchTiles", "stitch");
+  turbulence.setAttribute("result", "water-noise");
+  const tintNoise = document.createElementNS(defs.namespaceURI, "feColorMatrix");
+  tintNoise.setAttribute("type", "matrix");
+  tintNoise.setAttribute("values",
+    "0.20 0.20 0.20 0 0.02 " +
+    "0.20 0.20 0.20 0 0.16 " +
+    "0.20 0.20 0.20 0 0.22 " +
+    "0 0 0 0.42 0");
+  waterFilter.append(turbulence, tintNoise);
+  defs.append(waterFilter);
+
+  const waterPattern = document.createElementNS(defs.namespaceURI, "pattern");
+  waterPattern.setAttribute("id", "water-texture");
+  waterPattern.setAttribute("width", "180");
+  waterPattern.setAttribute("height", "140");
+  waterPattern.setAttribute("patternUnits", "userSpaceOnUse");
+  const noiseTile = document.createElementNS(defs.namespaceURI, "rect");
+  noiseTile.setAttribute("width", "180");
+  noiseTile.setAttribute("height", "140");
+  noiseTile.setAttribute("filter", "url(#water-ripple-noise)");
+  noiseTile.setAttribute("opacity", "0.42");
+  const rippleLines = document.createElementNS(defs.namespaceURI, "path");
+  rippleLines.setAttribute("d",
+    "M 8 24 Q 25 18 42 24 T 76 24 T 110 24 T 144 24 T 178 24 " +
+    "M -8 58 Q 12 51 32 58 T 72 58 T 112 58 T 152 58 T 192 58 " +
+    "M 14 96 Q 32 89 50 96 T 86 96 T 122 96 T 158 96 " +
+    "M -12 126 Q 6 120 24 126 T 60 126 T 96 126 T 132 126 T 168 126");
+  rippleLines.setAttribute("fill", "none");
+  rippleLines.setAttribute("stroke", "#78b5c0");
+  rippleLines.setAttribute("stroke-width", "0.8");
+  rippleLines.setAttribute("stroke-opacity", "0.19");
+  waterPattern.append(noiseTile, rippleLines);
+  defs.append(waterPattern);
+
   // A restrained diagonal hatch adds texture without obscuring the biome colours.
   const biomeTexture = document.createElementNS(defs.namespaceURI, "pattern");
   biomeTexture.setAttribute("id", "biome-texture");
@@ -245,6 +293,15 @@ function renderMap(): void {
   ocean.setAttribute("height", String(viewHeight));
   ocean.setAttribute("fill", "url(#ocean-grid)");
   contentGroup.append(ocean);
+
+  // Static water texture sits above the ocean base and below all land geometry.
+  const waterTexture = document.createElementNS(svg.namespaceURI, "rect");
+  waterTexture.setAttribute("class", "water-texture");
+  waterTexture.setAttribute("width", String(viewWidth));
+  waterTexture.setAttribute("height", String(viewHeight));
+  waterTexture.setAttribute("fill", "url(#water-texture)");
+  waterTexture.setAttribute("pointer-events", "none");
+  contentGroup.append(waterTexture);
 
   countryFeatures = countryCollection.features as CountryFeature[];
   const countryLayer = document.createElementNS(svg.namespaceURI, "g");
