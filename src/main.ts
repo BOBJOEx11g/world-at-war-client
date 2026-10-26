@@ -258,7 +258,8 @@ function selectCountry(id: string): void {
   for (const shape of svg.querySelectorAll<SVGPathElement>(".country-shape")) {
     shape.classList.toggle("selected", shape.dataset.countryId === id);
   }
-  mapStatus.textContent = \`Selected: \${name} · loading states/provinces…\`;
+  mapStatus.textContent = `Selected: ${name} · loading states/provinces…`;
+  renderMap();
 
   const iso3Value = country.properties["ISO3166-1-Alpha-3"];
   if (typeof iso3Value === "string" && iso3Value !== "-99") {
@@ -268,23 +269,23 @@ function selectCountry(id: string): void {
         administrativeFeatures = collection?.features ?? [];
         administrativeCountryId = administrativeFeatures.length > 0 ? id : null;
         if (administrativeFeatures.length > 0) {
-          selectedDetail.textContent = \`\${name} · \${administrativeFeatures.length.toLocaleString()} first-level administrative areas loaded. Select a state or province on the map.\`;
-          mapStatus.textContent = \`\${name}: \${administrativeFeatures.length.toLocaleString()} states/provinces · geoBoundaries (CC BY 4.0)\`;
+          selectedDetail.textContent = `${name} · ${administrativeFeatures.length.toLocaleString()} first-level administrative areas loaded. Select a state or province on the map.`;
+          mapStatus.textContent = `${name}: ${administrativeFeatures.length.toLocaleString()} states/provinces · geoBoundaries (CC BY 4.0)`;
         } else {
-          selectedDetail.textContent = \`\${name} · no first-level boundary data was available from the source.\`;
-          mapStatus.textContent = \`Selected: \${name} · no ADM1 data available\`;
+          selectedDetail.textContent = `${name} · no first-level boundary data was available from the source.`;
+          mapStatus.textContent = `Selected: ${name} · no ADM1 data available`;
         }
         renderMap();
       })
       .catch((error) => {
         if (selectedId !== id) return;
-        selectedDetail.textContent = \`\${name} · could not load state/province boundaries. Check the connection and try selecting the country again.\`;
-        mapStatus.textContent = \`Selected: \${name} · administrative boundary load failed\`;
+        selectedDetail.textContent = `${name} · could not load state/province boundaries. Check the connection and try selecting the country again.`;
+        mapStatus.textContent = `Selected: ${name} · administrative boundary load failed`;
         console.error("World at War administrative boundaries failed to load:", error);
       });
   } else {
-    selectedDetail.textContent = \`\${name} · this map feature has no usable ISO-3 code for administrative-boundary lookup.\`;
-    mapStatus.textContent = \`Selected: \${name} · no ISO-3 code\`;
+    selectedDetail.textContent = `${name} · this map feature has no usable ISO-3 code for administrative-boundary lookup.`;
+    mapStatus.textContent = `Selected: ${name} · no ISO-3 code`;
   }
 }
 
@@ -298,12 +299,12 @@ function selectProvince(id: string): void {
   const country = countryFeatures.find((feature) => String(feature.id ?? feature.properties.name ?? "unknown") === selectedId);
   const countryName = country?.properties.name ?? "Selected country";
   selectedName.textContent = provinceName;
-  selectedDetail.textContent = \`\${provinceName} · \${countryName}. Administrative boundaries from geoBoundaries; game ownership and biome tags are not assigned yet.\`;
+  selectedDetail.textContent = `${provinceName} · ${countryName}. Administrative boundaries from geoBoundaries; game ownership and biome tags are not assigned yet.`;
   selectionCard.classList.add("has-selection");
   for (const shape of svg.querySelectorAll<SVGPathElement>(".admin-shape")) {
     shape.classList.toggle("selected", shape.dataset.provinceId === id);
   }
-  mapStatus.textContent = \`Selected state/province: \${provinceName} · \${countryName}\`;
+  mapStatus.textContent = `Selected state/province: ${provinceName} · ${countryName}`;
 }
 
 function applyViewTransform(animate = true): void {
