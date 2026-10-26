@@ -215,8 +215,8 @@ function renderMap(): void {
   const gridLine = document.createElementNS(defs.namespaceURI, "path");
   gridLine.setAttribute("d", "M 36 0 L 0 0 0 36");
   gridLine.setAttribute("fill", "none");
-  gridLine.setAttribute("stroke", "#a9a08b");
-  gridLine.setAttribute("stroke-width", "0.6");
+  gridLine.setAttribute("stroke", "#4b7484");
+  gridLine.setAttribute("stroke-width", "0.45");
   oceanPattern.append(gridLine);
   defs.append(oceanPattern);
 
@@ -254,7 +254,7 @@ function renderMap(): void {
   noiseTile.setAttribute("width", "76");
   noiseTile.setAttribute("height", "56");
   noiseTile.setAttribute("filter", "url(#water-ripple-noise)");
-  noiseTile.setAttribute("opacity", "0.18");
+  noiseTile.setAttribute("opacity", "0.10");
   const rippleLines = document.createElementNS(defs.namespaceURI, "path");
   rippleLines.setAttribute("d",
     "M 3 10 q 5 -2 10 0 t 10 0 " +
@@ -265,7 +265,7 @@ function renderMap(): void {
   rippleLines.setAttribute("fill", "none");
   rippleLines.setAttribute("stroke", "#6e8e8a");
   rippleLines.setAttribute("stroke-width", "0.45");
-  rippleLines.setAttribute("stroke-opacity", "0.15");
+  rippleLines.setAttribute("stroke-opacity", "0.09");
   const rippleMotion = document.createElementNS(defs.namespaceURI, "animateTransform");
   rippleMotion.setAttribute("attributeName", "transform");
   rippleMotion.setAttribute("type", "translate");
