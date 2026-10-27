@@ -1,5 +1,6 @@
 import { geoCentroid, geoDistance, geoNaturalEarth1, geoPath } from "d3-geo";
 import { BIOME_TAGS } from "./terrain";
+import { WebGLMapRenderer } from "./webgl-renderer";
 import { loadAllFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
 import "./style.css";
 
@@ -79,7 +80,7 @@ app.innerHTML = `
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
       <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="toggle-biomes" aria-pressed="false">BIOMES: OFF</button><button id="reset-view">RESET VIEW</button></div></div>
-      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><svg id="world-map" role="img" aria-label="Interactive map of state and province polygons across the world"></svg><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
+      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><canvas id="world-map-webgl" aria-hidden="true"></canvas><svg id="world-map" role="img" aria-label="Interactive map of state and province polygons across the world"></svg><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
       <div class="map-footer"><span id="map-status">Loading country geometry…</span><span>SCENARIO DATA: 2026 <i>·</i> MAP DATA: PROVISIONAL</span></div>
     </section>
   </main>
@@ -88,6 +89,9 @@ app.innerHTML = `
 
 const mapWrap = document.querySelector<HTMLDivElement>("#map-wrap")!;
 const svg = document.querySelector<SVGSVGElement>("#world-map")!;
+const webglCanvas = document.querySelector<HTMLCanvasElement>("#world-map-webgl")!;
+let webglRenderer: WebGLMapRenderer | null = null;
+let webglFailed = false;
 const loading = document.querySelector<HTMLDivElement>("#map-loading")!;
 const mapStatus = document.querySelector<HTMLSpanElement>("#map-status")!;
 const selectedName = document.querySelector<HTMLHeadingElement>("#selected-name")!;
@@ -303,6 +307,20 @@ function renderMap(): void {
     .fitExtent([[18, 24], [Math.max(19, viewWidth - 18), Math.max(25, viewHeight - 28)]], countryCollection);
   mapProjection = projection;
   const path = geoPath(projection);
+  if (!webglFailed) {
+    try {
+      if (!webglRenderer) webglRenderer = new WebGLMapRenderer(webglCanvas);
+      webglRenderer.resize(viewWidth, viewHeight);
+      webglRenderer.setGeometry(countryFeatures, (coordinate) => {
+        const point = projection(coordinate as [number, number]);
+        return point ? [point[0], point[1]] : null;
+      });
+    } catch (error) {
+      webglFailed = true;
+      console.error("WebGL renderer initialization failed; SVG fallback remains available:", error);
+      webglCanvas.hidden = true;
+    }
+  }
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
   const oceanPattern = document.createElementNS(defs.namespaceURI, "pattern");
   oceanPattern.setAttribute("id", "ocean-grid");
@@ -317,77 +335,14 @@ function renderMap(): void {
   oceanPattern.append(gridLine);
   defs.append(oceanPattern);
 
-  // The supplied JPG provides the water texture; no procedural waves are generated.
-  // Tile the supplied JPG as a subtle base water texture. Keep the procedural
-  // noise and animated ripples above it for fine detail.
-  const waterImagePattern = document.createElementNS(defs.namespaceURI, "pattern");
-  waterImagePattern.setAttribute("id", "water-image-pattern");
-  waterImagePattern.setAttribute("width", "256");
-  waterImagePattern.setAttribute("height", "256");
-  waterImagePattern.setAttribute("patternUnits", "userSpaceOnUse");
-  const waterImage = document.createElementNS(defs.namespaceURI, "image");
-  waterImage.setAttribute("href", waterTextureUrl);
-  waterImage.setAttribute("width", "256");
-  waterImage.setAttribute("height", "256");
-  waterImage.setAttribute("preserveAspectRatio", "none");
-  waterImage.setAttribute("opacity", "1");
-  waterImagePattern.append(waterImage);
-  defs.append(waterImagePattern);
-
-  // A restrained diagonal hatch adds texture without obscuring the biome colours.
-  const biomeTexture = document.createElementNS(defs.namespaceURI, "pattern");
-  biomeTexture.setAttribute("id", "biome-texture");
-  biomeTexture.setAttribute("width", "9");
-  biomeTexture.setAttribute("height", "9");
-  biomeTexture.setAttribute("patternUnits", "userSpaceOnUse");
-  const hatch = document.createElementNS(defs.namespaceURI, "path");
-  hatch.setAttribute("d", "M -2 2 L 2 -2 M 0 9 L 9 0 M 7 11 L 11 7");
-  hatch.setAttribute("fill", "none");
-  hatch.setAttribute("stroke", "#665d4e");
-  hatch.setAttribute("stroke-opacity", "0.17");
-  hatch.setAttribute("stroke-width", "0.65");
-  biomeTexture.append(hatch);
-  defs.append(biomeTexture);
-  svg.append(defs);
-
+  // WebGL owns country polygons. SVG is a transparent interaction overlay.
   const contentGroup = document.createElementNS(svg.namespaceURI, "g") as SVGGElement;
   mapContent = contentGroup;
   contentGroup.setAttribute("class", "map-content");
-  const ocean = document.createElementNS(svg.namespaceURI, "rect");
-  ocean.setAttribute("class", "ocean");
-  ocean.setAttribute("width", String(viewWidth));
-  ocean.setAttribute("height", String(viewHeight));
-  ocean.setAttribute("fill", "url(#ocean-grid)");
-  contentGroup.append(ocean);
-
-  // Static water texture sits above the ocean base and below all land geometry.
-  const waterTexture = document.createElementNS(svg.namespaceURI, "rect");
-  waterTexture.setAttribute("class", "water-texture");
-  waterTexture.setAttribute("width", String(viewWidth));
-  waterTexture.setAttribute("height", String(viewHeight));
-  waterTexture.setAttribute("fill", "url(#water-image-pattern)");
-  waterTexture.setAttribute("pointer-events", "none");
-  contentGroup.append(waterTexture);
-
-  countryFeatures = countryCollection.features as CountryFeature[];
   const countryLayer = document.createElementNS(svg.namespaceURI, "g");
   countryLayer.setAttribute("class", "country-layer");
   contentGroup.append(countryLayer);
-  // Attach the geometry before measuring paths so getBBox() returns real bounds.
   svg.append(contentGroup);
-
-  // Country polygons are visual context only, not hitboxes. Province polygons
-  // below are the selectable territory shapes; city polygons will sit above them.
-  for (const country of countryFeatures) {
-    const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
-    shape.setAttribute("d", path(country) ?? "");
-    shape.setAttribute("class", "country-shape");
-    shape.setAttribute("aria-hidden", "true");
-    // Countries are a visual base layer only. Territory selection belongs to
-    // province polygons and, when added, city polygons.
-    shape.setAttribute("pointer-events", "none");
-    countryLayer.append(shape);
-  }
 
   // The optional biome overlay sits above country fills but below selectable
   // province boundaries, so enabling it never hides the territory hitboxes.
@@ -510,6 +465,7 @@ function renderMap(): void {
   contentGroup.append(cityLayer);
 
   applyViewTransform(false);
+  if (webglRenderer) webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
   loading.hidden = true;
   mapStatus.textContent = administrativeDataReady
     ? `${countryFeatures.length.toLocaleString()} countries · ${allAdministrativeFeatures.length.toLocaleString()} state/province polygons · ${cityDataReady ? `${cityRecords.length.toLocaleString()} selectable urban footprints` : "loading urban areas…"}`
@@ -553,6 +509,7 @@ function applyViewTransform(animate = true): void {
   if (!mapContent) return;
   mapContent.style.transition = animate ? "transform 180ms ease-out" : "none";
   mapContent.setAttribute("transform", "translate(" + panX + " " + panY + ") scale(" + zoomScale + ")");
+  if (webglRenderer) webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
   const cityLayer = mapContent.querySelector<SVGGElement>(".city-layer");
   if (cityLayer) {
     const shouldShowCities = zoomScale >= 2;
