@@ -82,6 +82,8 @@ export class WebGLMapRenderer {
   private readonly borderBuffer: WebGLBuffer;
   private fillCount = 0;
   private borderRanges: Array<[number, number]> = [];
+  private readonly administrativeBuffer: WebGLBuffer;
+  private administrativeRanges: Array<[number, number]> = [];
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl", { alpha: true, antialias: false, powerPreference: "low-power" });
