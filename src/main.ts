@@ -320,6 +320,10 @@ function renderMap(): void {
         const point = projection(coordinate as [number, number]);
         return point ? [point[0], point[1]] : null;
       });
+      webglRenderer.setLakeGeometry(lakeFeatures, (coordinate) => {
+        const point = projection(coordinate as [number, number]);
+        return point ? [point[0], point[1]] : null;
+      });
     } catch (error) {
       webglFailed = true;
       console.error("WebGL renderer initialization failed; SVG fallback remains available:", error);
@@ -424,18 +428,7 @@ function renderMap(): void {
 
   // City urban-footprint polygons are above provinces so they receive clicks first.
   // The data shows built-up extent, not official municipal boundaries.
-  if (lakeFeatures.length > 0) {
-    const lakeLayer = document.createElementNS(svg.namespaceURI, "g");
-    lakeLayer.setAttribute("class", "lake-layer");
-    lakeLayer.setAttribute("aria-label", "Lake polygons");
-    const lakeShape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
-    lakeShape.setAttribute("class", "lake-shape");
-    lakeShape.setAttribute("d", lakeFeatures.map((feature) => path(feature) ?? "").join(" "));
-    lakeShape.setAttribute("aria-hidden", "true");
-    lakeShape.setAttribute("pointer-events", "none");
-    lakeLayer.append(lakeShape);
-    contentGroup.append(lakeLayer);
-  }
+  // Lake polygons are filled by WebGL; SVG remains only for interaction overlays.
 
   const cityLayer = document.createElementNS(svg.namespaceURI, "g") as SVGGElement;
   cityLayer.setAttribute("class", "city-layer");
