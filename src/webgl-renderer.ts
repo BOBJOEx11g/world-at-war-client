@@ -5,6 +5,7 @@ export type ProjectedPoint = [number, number];
 export type Projection = (coordinate: Position) => ProjectedPoint | null | undefined;
 
 type GeometryArrays = { fill: number[]; borders: number[]; borderRanges: Array<[number, number]> };
+type BoundaryArrays = { borders: number[]; borderRanges: Array<[number, number]> };
 
 function collectPolygon(rings: Position[][], project: Projection, output: GeometryArrays): void {
   const flat: number[] = [];
@@ -30,7 +31,7 @@ function collectPolygon(rings: Position[][], project: Projection, output: Geomet
   }
 }
 
-function collectGeometry(geometry: Geometry | null, project: Projection, output: GeometryArrays): void {
+function collectBoundaryPolygon(rings: Position[][], project: Projection, output: BoundaryArrays): void {\n  for (const ring of rings) {\n    const points: ProjectedPoint[] = [];\n    for (const coordinate of ring) {\n      const point = project(coordinate);\n      if (point && Number.isFinite(point[0]) && Number.isFinite(point[1])) points.push(point);\n    }\n    if (points.length < 3) continue;\n    const start = output.borders.length / 2;\n    for (const [x, y] of points) output.borders.push(x, y);\n    output.borderRanges.push([start, points.length]);\n  }\n}\n\nfunction collectBoundaryGeometry(geometry: Geometry | null, project: Projection, output: BoundaryArrays): void {\n  if (!geometry) return;\n  switch (geometry.type) {\n    case "Polygon": collectBoundaryPolygon(geometry.coordinates, project, output); break;\n    case "MultiPolygon": for (const polygon of geometry.coordinates) collectBoundaryPolygon(polygon, project, output); break;\n    case "GeometryCollection": for (const child of geometry.geometries) collectBoundaryGeometry(child, project, output); break;\n  }\n}\n\nfunction collectGeometry(geometry: Geometry | null, project: Projection, output: GeometryArrays): void {
   if (!geometry) return;
   switch (geometry.type) {
     case "Polygon": collectPolygon(geometry.coordinates, project, output); break;
@@ -104,7 +105,7 @@ export class WebGLMapRenderer {
     this.color = gl.getUniformLocation(program, "u_color")!;
     this.fillBuffer = gl.createBuffer()!;
     this.borderBuffer = gl.createBuffer()!;
-    this.administrativeBuffer = gl.createBuffer()!;
+    this.administrativeBuffer = gl.createBuffer()!;\n    this.lakeBuffer = gl.createBuffer()!;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
@@ -164,7 +165,7 @@ export class WebGLMapRenderer {
   destroy(): void {
     this.gl.deleteBuffer(this.fillBuffer);
     this.gl.deleteBuffer(this.borderBuffer);
-    this.gl.deleteBuffer(this.administrativeBuffer);
+    this.gl.deleteBuffer(this.administrativeBuffer);\n    this.gl.deleteBuffer(this.lakeBuffer);
     this.gl.deleteProgram(this.program);
   }
 }
