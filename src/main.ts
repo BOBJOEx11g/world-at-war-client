@@ -11,6 +11,7 @@ type CountryFeature = GeoJSON.Feature<GeoJSON.Geometry, CountryProperties>;
 type BiomeFeature = GeoJSON.Feature<GeoJSON.Geometry, { BIOME_NAME?: string; [key: string]: unknown }>;
 type CityAreaProperties = { name?: string; NAME?: string; scalerank?: number; featurecla?: string; area_sqkm?: number; [key: string]: unknown };
 type CityAreaFeature = GeoJSON.Feature<GeoJSON.Geometry, CityAreaProperties>;
+type LakeFeature = GeoJSON.Feature<GeoJSON.Geometry, { name?: string; NAME?: string; [key: string]: unknown }>;
 type PopulatedPlaceFeature = GeoJSON.Feature<GeoJSON.Geometry, { name?: string; NAME?: string; nameascii?: string; adm0name?: string; [key: string]: unknown }>;
 type CityRecord = { feature: CityAreaFeature; id: string; name: string; country: string };
 
@@ -73,7 +74,7 @@ app.innerHTML = `
       <div class="section-heading">SUPPORTED BIOMES <span class="live-label">8 TAGS</span></div>
       <div class="biome-tags" aria-label="Supported biome tags">${BIOME_TAGS.map((biome) => `<span class="biome-tag">${biome}</span>`).join("")}</div>
       <p class="biome-note">Toggle the biome map to view broad ecological regions. This is a reference overlay, not yet province-level game terrain data.</p>
-      <div class="sidebar-note"><strong>*Map-data note</strong><p>Countries use Natural Earth Admin 0 geometry; states/provinces use Natural Earth 1:10m Admin 1. City layer uses Natural Earth 1:50m urban footprints matched to nearby populated-place points. These are built-up areas, not official municipal borders. Optional biome overlay: RESOLVE Ecoregions 2017, CC BY 4.0.</p></div>
+      <div class="sidebar-note"><strong>*Map-data note</strong><p>Countries use Natural Earth Admin 0 geometry; states/provinces use Natural Earth 1:10m Admin 1. City polygons use Natural Earth 1:10m urban areas matched to nearby 1:10m populated places. Lakes use Natural Earth 1:10m lake polygons. Urban footprints are built-up areas, not official municipal borders. Optional biome overlay: RESOLVE Ecoregions 2017, CC BY 4.0.</p></div>
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
@@ -112,6 +113,8 @@ let allAdministrativeFeatures: AdministrativeFeature[] = [];
 let administrativeDataReady = false;
 let cityAreaFeatures: CityAreaFeature[] = [];
 let cityRecords: CityRecord[] = [];
+let lakeFeatures: LakeFeature[] = [];
+let populatedPlaceGrid = new Map<string, PopulatedPlaceFeature[]>();
 let populatedPlaceFeatures: PopulatedPlaceFeature[] = [];
 let cityDataReady = false;
 let selectedProvinceId: string | null = null;
@@ -124,16 +127,21 @@ const mapLegend = document.querySelector<HTMLDivElement>("#map-legend")!;
 
 // Generalize the global ecoregion geometry slightly: this is a broad map overlay,
 // not navigation-grade data, and smaller paths render much faster in the browser.
-const CITY_AREAS_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_urban_areas.geojson";
-const POPULATED_PLACES_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_populated_places_simple.geojson";
+const CITY_AREAS_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_urban_areas.geojson";
+const POPULATED_PLACES_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_populated_places.geojson";
+const LAKES_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_lakes.geojson";
 
 const BIOME_GEOJSON_URL =
   "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Resolve_Ecoregions/FeatureServer/0/query?where=1%3D1&outFields=BIOME_NAME&returnGeometry=true&outSR=4326&maxAllowableOffset=0.02&geometryPrecision=4&resultRecordCount=1000&f=geojson";
 
+function placeGridKey(longitude: number, latitude: number): string {
+  return `${Math.floor((longitude + 180) / 5)}:${Math.floor((latitude + 90) / 5)}`;
+}
+
 async function loadCityGeometry(): Promise<void> {
   const [areasResponse, placesResponse] = await Promise.all([
-    fetch(CITY_AREAS_GEOJSON_URL, { headers: { accept: "application/geo+json, application/json" }, signal: AbortSignal.timeout(25000) }),
-    fetch(POPULATED_PLACES_GEOJSON_URL, { headers: { accept: "application/geo+json, application/json" }, signal: AbortSignal.timeout(25000) }),
+    fetch(CITY_AREAS_GEOJSON_URL, { headers: { accept: "application/geo+json, application/json" }, signal: AbortSignal.timeout(30000) }),
+    fetch(POPULATED_PLACES_GEOJSON_URL, { headers: { accept: "application/geo+json, application/json" }, signal: AbortSignal.timeout(30000) }),
   ]);
   if (!areasResponse.ok) throw new Error(`Urban-area request failed: HTTP ${areasResponse.status}`);
   if (!placesResponse.ok) throw new Error(`Populated-place request failed: HTTP ${placesResponse.status}`);
@@ -144,10 +152,17 @@ async function loadCityGeometry(): Promise<void> {
   cityAreaFeatures = areas.features as CityAreaFeature[];
   populatedPlaceFeatures = places.features as PopulatedPlaceFeature[];
   if (cityAreaFeatures.length === 0 || populatedPlaceFeatures.length === 0) throw new Error("City data source returned no features.");
-  cityRecords = cityAreaFeatures.flatMap((feature, index) => {
-    const city = nearestCityName(feature, index);
-    return city ? [{ feature, ...city }] : [];
-  });
+  populatedPlaceGrid = new Map<string, PopulatedPlaceFeature[]>();
+  for (const place of populatedPlaceFeatures) {
+    if (place.geometry?.type !== "Point") continue;
+    const [longitude, latitude] = place.geometry.coordinates;
+    const key = placeGridKey(longitude, latitude);
+    const bucket = populatedPlaceGrid.get(key) ?? [];
+    bucket.push(place);
+    populatedPlaceGrid.set(key, bucket);
+  }
+  // Spatial index prevents comparing every urban footprint with every settlement.
+  cityRecords = cityAreaFeatures.map((feature, index) => ({ feature, ...nearestCityName(feature, index) }));
   cityDataReady = true;
 }
 
@@ -156,10 +171,19 @@ function nearestCityName(feature: CityAreaFeature, index: number): { id: string;
   let nearest: PopulatedPlaceFeature | null = null;
   let nearestDistance = Infinity;
   if (Number.isFinite(center[0]) && Number.isFinite(center[1])) {
-    for (const place of populatedPlaceFeatures) {
-      if (!place.geometry || place.geometry.type !== "Point") continue;
-      const distance = geoDistance(center, place.geometry.coordinates as [number, number]);
-      if (distance < nearestDistance) { nearestDistance = distance; nearest = place; }
+    const lonCell = Math.floor((center[0] + 180) / 5);
+    const latCell = Math.floor((center[1] + 90) / 5);
+    const lonRadius = Math.abs(center[1]) > 65 ? 6 : 3;
+    for (let dx = -lonRadius; dx <= lonRadius; dx++) {
+      for (let dy = -3; dy <= 3; dy++) {
+        const bucket = populatedPlaceGrid.get(`${lonCell + dx}:${latCell + dy}`);
+        if (!bucket) continue;
+        for (const place of bucket) {
+          if (place.geometry?.type !== "Point") continue;
+          const distance = geoDistance(center, place.geometry.coordinates as [number, number]);
+          if (distance < nearestDistance) { nearestDistance = distance; nearest = place; }
+        }
+      }
     }
   }
 
@@ -174,6 +198,14 @@ function nearestCityName(feature: CityAreaFeature, index: number): { id: string;
   const name = useNearestPlace ? placeName : areaName || placeName || `Urban area ${index + 1}`;
   const country = String(placeProps.adm0name ?? placeProps.ADM0NAME ?? placeProps.admin ?? placeProps.ADMIN ?? "Country unavailable");
   return { id: `city-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, country };
+}
+
+async function loadLakeGeometry(): Promise<void> {
+  const response = await fetch(LAKES_GEOJSON_URL, { headers: { accept: "application/geo+json, application/json" }, signal: AbortSignal.timeout(30000) });
+  if (!response.ok) throw new Error(`Lake data request failed: HTTP ${response.status}`);
+  const dataset = await response.json() as GeoJSON.FeatureCollection<GeoJSON.Geometry, LakeFeature["properties"]>;
+  if (dataset.type !== "FeatureCollection" || !Array.isArray(dataset.features) || dataset.features.length === 0) throw new Error("Lake source did not return a valid GeoJSON FeatureCollection.");
+  lakeFeatures = dataset.features as LakeFeature[];
 }
 
 async function loadBiomeGeometry(): Promise<BiomeFeature[]> {
@@ -431,11 +463,24 @@ function renderMap(): void {
 
   // City urban-footprint polygons are above provinces so they receive clicks first.
   // The data shows built-up extent, not official municipal boundaries.
+  if (lakeFeatures.length > 0) {
+    const lakeLayer = document.createElementNS(svg.namespaceURI, "g");
+    lakeLayer.setAttribute("class", "lake-layer");
+    lakeLayer.setAttribute("aria-label", "Lake polygons");
+    const lakeShape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
+    lakeShape.setAttribute("class", "lake-shape");
+    lakeShape.setAttribute("d", lakeFeatures.map((feature) => path(feature) ?? "").join(" "));
+    lakeShape.setAttribute("aria-hidden", "true");
+    lakeShape.setAttribute("pointer-events", "none");
+    lakeLayer.append(lakeShape);
+    contentGroup.append(lakeLayer);
+  }
+
   const cityLayer = document.createElementNS(svg.namespaceURI, "g") as SVGGElement;
   cityLayer.setAttribute("class", "city-layer");
   cityLayer.setAttribute("aria-label", "Urban-area polygons");
   cityLayer.setAttribute("pointer-events", "auto");
-  for (const cityRecord of cityRecords) {
+  for (const cityRecord of (zoomScale >= 2 ? cityRecords : [])) {
     const { feature, id: cityId, name: cityName, country: cityCountry } = cityRecord;
     const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
     shape.setAttribute("d", path(feature) ?? "");
@@ -461,7 +506,7 @@ function renderMap(): void {
     });
     cityLayer.append(shape);
   }
-  cityLayer.style.visibility = "visible";
+  cityLayer.style.visibility = zoomScale >= 2 ? "visible" : "hidden";
   contentGroup.append(cityLayer);
 
   applyViewTransform(false);
@@ -509,7 +554,30 @@ function applyViewTransform(animate = true): void {
   mapContent.style.transition = animate ? "transform 180ms ease-out" : "none";
   mapContent.setAttribute("transform", "translate(" + panX + " " + panY + ") scale(" + zoomScale + ")");
   const cityLayer = mapContent.querySelector<SVGGElement>(".city-layer");
-  if (cityLayer) cityLayer.style.visibility = "visible";
+  if (cityLayer) {
+    const shouldShowCities = zoomScale >= 2;
+    cityLayer.style.visibility = shouldShowCities ? "visible" : "hidden";
+    if (shouldShowCities && cityLayer.childElementCount === 0 && cityDataReady && mapProjection) {
+      const path = geoPath(mapProjection);
+      for (const cityRecord of cityRecords) {
+        const { feature, id: cityId, name: cityName, country: cityCountry } = cityRecord;
+        const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
+        shape.setAttribute("d", path(feature) ?? "");
+        shape.setAttribute("class", "city-shape" + (selectedCityId === cityId ? " selected" : ""));
+        shape.setAttribute("data-city-id", cityId);
+        shape.setAttribute("tabindex", "0");
+        shape.setAttribute("role", "button");
+        shape.setAttribute("aria-label", `${cityName} urban area, ${cityCountry}`);
+        shape.setAttribute("pointer-events", "visibleFill");
+        shape.addEventListener("click", (event) => { event.stopPropagation(); selectCity(cityId, cityName, cityCountry); });
+        shape.addEventListener("keydown", (event) => {
+          const keyboardEvent = event as KeyboardEvent;
+          if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); event.stopPropagation(); selectCity(cityId, cityName, cityCountry); }
+        });
+        cityLayer.append(shape);
+      }
+    }
+  }
 }
 
 function zoomAt(screenX: number, screenY: number, factor: number): void {
@@ -647,6 +715,9 @@ const resizeObserver = new ResizeObserver(() => {
 });
 resizeObserver.observe(mapWrap);
 loadCountryGeometry();
+void loadLakeGeometry()
+  .then(() => { renderMap(); mapStatus.textContent = `Lake layer ready · ${lakeFeatures.length.toLocaleString()} lake polygons`; })
+  .catch((error) => { console.error("World at War lake geometry failed to load:", error); mapStatus.textContent = "Lake data failed to load; land and province layers remain available."; });
 void loadCityGeometry()
   .then(() => {
     renderMap();
