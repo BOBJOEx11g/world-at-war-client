@@ -110,6 +110,8 @@ export class WebGLMapRenderer {
   private administrativeRanges: Array<[number, number]> = [];
   private readonly lakeBuffer: WebGLBuffer;
   private lakeVertexCount = 0;
+  private readonly cityBuffer: WebGLBuffer;
+  private cityVertexCount = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl", { alpha: true, antialias: false, powerPreference: "low-power" });
@@ -132,6 +134,7 @@ export class WebGLMapRenderer {
     this.borderBuffer = gl.createBuffer()!;
     this.administrativeBuffer = gl.createBuffer()!;
     this.lakeBuffer = gl.createBuffer()!;
+    this.cityBuffer = gl.createBuffer()!;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
@@ -163,6 +166,14 @@ export class WebGLMapRenderer {
     this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(arrays.fill), this.gl.STATIC_DRAW);
   }
 
+  setCityGeometry(features: Feature<Geometry>[], project: Projection): void {
+    const arrays: GeometryArrays = { fill: [], borders: [], borderRanges: [] };
+    for (const feature of features) collectGeometry(feature.geometry, project, arrays);
+    this.cityVertexCount = arrays.fill.length / 2;
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.cityBuffer);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(arrays.fill), this.gl.STATIC_DRAW);
+  }
+
   resize(width: number, height: number): void {
     const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
     this.canvas.width = Math.max(1, Math.round(width * ratio));
@@ -186,6 +197,11 @@ export class WebGLMapRenderer {
     gl.vertexAttribPointer(this.position, 2, gl.FLOAT, false, 0, 0);
     gl.uniform4f(this.color, 0.91, 0.86, 0.73, 1);
     gl.drawArrays(gl.TRIANGLES, 0, this.fillCount);
+    // Water fills sit beneath borders so shorelines remain crisp.
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.lakeBuffer);
+    gl.vertexAttribPointer(this.position, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform4f(this.color, 0.14, 0.35, 0.44, 1);
+    gl.drawArrays(gl.TRIANGLES, 0, this.lakeVertexCount);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.borderBuffer);
     gl.vertexAttribPointer(this.position, 2, gl.FLOAT, false, 0, 0);
     gl.uniform4f(this.color, 0.09, 0.09, 0.07, 1);
@@ -194,10 +210,10 @@ export class WebGLMapRenderer {
     gl.vertexAttribPointer(this.position, 2, gl.FLOAT, false, 0, 0);
     gl.uniform4f(this.color, 0.52, 0.51, 0.47, 0.96);
     for (const [start, count] of this.administrativeRanges) gl.drawArrays(gl.LINE_LOOP, start, count);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.lakeBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.cityBuffer);
     gl.vertexAttribPointer(this.position, 2, gl.FLOAT, false, 0, 0);
-    gl.uniform4f(this.color, 0.14, 0.35, 0.44, 1);
-    gl.drawArrays(gl.TRIANGLES, 0, this.lakeVertexCount);
+    gl.uniform4f(this.color, 0.65, 0.48, 0.31, 0.92);
+    if (zoom >= 2) gl.drawArrays(gl.TRIANGLES, 0, this.cityVertexCount);
   }
 
   destroy(): void {
@@ -205,6 +221,7 @@ export class WebGLMapRenderer {
     this.gl.deleteBuffer(this.borderBuffer);
     this.gl.deleteBuffer(this.administrativeBuffer);
     this.gl.deleteBuffer(this.lakeBuffer);
+    this.gl.deleteBuffer(this.cityBuffer);
     this.gl.deleteProgram(this.program);
   }
 }
