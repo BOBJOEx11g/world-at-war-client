@@ -160,6 +160,7 @@ async function loadCityGeometry(): Promise<void> {
   for (const place of populatedPlaceFeatures) {
     if (place.geometry?.type !== "Point") continue;
     const [longitude, latitude] = place.geometry.coordinates;
+    if (typeof longitude !== "number" || typeof latitude !== "number") continue;
     const key = placeGridKey(longitude, latitude);
     const bucket = populatedPlaceGrid.get(key) ?? [];
     bucket.push(place);
