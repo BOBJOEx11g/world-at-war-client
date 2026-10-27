@@ -22,7 +22,7 @@ function collectPolygon(rings: Position[][], project: Projection, output: Geomet
     for (const [x, y] of points) flat.push(x, y);
   }
   if (!projectedRings.length) return;
-  for (const index of earcut(flat, holes, 2)) output.fill.push(flat[index * 2], flat[index * 2 + 1]);
+  for (const index of earcut(flat, holes, 2)) output.fill.push(flat[index * 2]!, flat[index * 2 + 1]!);
   for (const ring of projectedRings) {
     const start = output.borders.length / 2;
     for (const [x, y] of ring) output.borders.push(x, y);
