@@ -102,6 +102,7 @@ export class WebGLMapRenderer {
     this.color = gl.getUniformLocation(program, "u_color")!;
     this.fillBuffer = gl.createBuffer()!;
     this.borderBuffer = gl.createBuffer()!;
+    this.administrativeBuffer = gl.createBuffer()!;
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
@@ -114,6 +115,14 @@ export class WebGLMapRenderer {
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.fillBuffer);
     this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(arrays.fill), this.gl.STATIC_DRAW);
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.borderBuffer);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(arrays.borders), this.gl.STATIC_DRAW);
+  }
+
+  setAdministrativeGeometry(features: Feature<Geometry>[], project: Projection): void {
+    const arrays: GeometryArrays = { fill: [], borders: [], borderRanges: [] };
+    for (const feature of features) collectGeometry(feature.geometry, project, arrays);
+    this.administrativeRanges = arrays.borderRanges;
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.administrativeBuffer);
     this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(arrays.borders), this.gl.STATIC_DRAW);
   }
 
@@ -144,11 +153,16 @@ export class WebGLMapRenderer {
     gl.vertexAttribPointer(this.position, 2, gl.FLOAT, false, 0, 0);
     gl.uniform4f(this.color, 0.09, 0.09, 0.07, 1);
     for (const [start, count] of this.borderRanges) gl.drawArrays(gl.LINE_LOOP, start, count);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.administrativeBuffer);
+    gl.vertexAttribPointer(this.position, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform4f(this.color, 0.52, 0.51, 0.47, 0.96);
+    for (const [start, count] of this.administrativeRanges) gl.drawArrays(gl.LINE_LOOP, start, count);
   }
 
   destroy(): void {
     this.gl.deleteBuffer(this.fillBuffer);
     this.gl.deleteBuffer(this.borderBuffer);
+    this.gl.deleteBuffer(this.administrativeBuffer);
     this.gl.deleteProgram(this.program);
   }
 }
