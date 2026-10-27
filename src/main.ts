@@ -79,7 +79,7 @@ app.innerHTML = `
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
       <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="toggle-biomes" aria-pressed="false">BIOMES: OFF</button><button id="reset-view">RESET VIEW</button></div></div>
-      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><svg id="world-map" role="img" aria-label="Interactive map of state and province polygons across the world"></svg><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
+      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><svg id="world-map" role="img" aria-label="Interactive map of state and province polygons across the world"></svg><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
       <div class="map-footer"><span id="map-status">Loading country geometry…</span><span>SCENARIO DATA: 2026 <i>·</i> MAP DATA: PROVISIONAL</span></div>
     </section>
   </main>
@@ -611,7 +611,7 @@ document.querySelector("#zoom-caribbean")?.addEventListener("click", () => focus
 
 function updateBiomeLegend(): void {
   if (!biomeModeEnabled) {
-    mapLegend.innerHTML = '<span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean</span>';
+    mapLegend.innerHTML = '<span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span>';
     return;
   }
   mapLegend.innerHTML = Object.entries(BIOME_COLORS)
