@@ -316,6 +316,10 @@ function renderMap(): void {
         const point = projection(coordinate as [number, number]);
         return point ? [point[0], point[1]] : null;
       });
+      webglRenderer.setAdministrativeGeometry(allAdministrativeFeatures, (coordinate) => {
+        const point = projection(coordinate as [number, number]);
+        return point ? [point[0], point[1]] : null;
+      });
     } catch (error) {
       webglFailed = true;
       console.error("WebGL renderer initialization failed; SVG fallback remains available:", error);
@@ -395,6 +399,7 @@ function renderMap(): void {
       const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
       shape.setAttribute("d", path(feature) ?? "");
       shape.setAttribute("class", "admin-shape" + (selectedProvinceId === provinceId ? " selected" : ""));
+      shape.setAttribute("stroke", selectedProvinceId === provinceId ? "#302c24" : "transparent");
       shape.setAttribute("data-province-id", provinceId);
       shape.setAttribute("tabindex", "0");
       shape.setAttribute("role", "button");
