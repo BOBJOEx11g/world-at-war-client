@@ -431,7 +431,7 @@ function renderMap(): void {
 
   // City urban-footprint polygons are above provinces so they receive clicks first.
   // The data shows built-up extent, not official municipal boundaries.
-  const cityLayer = document.createElementNS(svg.namespaceURI, "g");
+  const cityLayer = document.createElementNS(svg.namespaceURI, "g") as SVGGElement;
   cityLayer.setAttribute("class", "city-layer");
   cityLayer.setAttribute("aria-label", "Urban-area polygons");
   cityLayer.setAttribute("pointer-events", "auto");
