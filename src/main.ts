@@ -179,6 +179,7 @@ let allAdministrativeFeatures: AdministrativeFeature[] = [];
 let administrativeDataReady = false;
 let cityAreaFeatures: CityAreaFeature[] = [];
 let cityRecords: CityRecord[] = [];
+let cityRecordsById = new Map<string, CityRecord>();
 let lakeFeatures: LakeFeature[] = [];
 let populatedPlaceGrid = new Map<string, PopulatedPlaceFeature[]>();
 let populatedPlaceFeatures: PopulatedPlaceFeature[] = [];
@@ -230,6 +231,7 @@ async function loadCityGeometry(): Promise<void> {
   }
   // Spatial index prevents comparing every urban footprint with every settlement.
   cityRecords = cityAreaFeatures.map((feature, index) => ({ feature, ...nearestCityName(feature, index) }));
+  cityRecordsById = new Map(cityRecords.map((record) => [record.id, record]));
   citySpatialIndex = buildSpatialIndex(cityAreaFeatures as GeoJSON.Feature<GeoJSON.Geometry>[]);
   cityDataReady = true;
 }
@@ -390,9 +392,12 @@ function renderMap(): void {
       webglRenderer.setLakeGeometry(lakeFeatures, project);
       projectedLakes = lakeFeatures;
     }
-    if (projectionChanged || projectedCities !== cityAreaFeatures) {
+    if (zoomScale >= 2 && (projectionChanged || projectedCities !== cityAreaFeatures)) {
       webglRenderer.setCityGeometry(cityAreaFeatures, project);
       projectedCities = cityAreaFeatures;
+    } else if (projectionChanged || projectedCities !== cityAreaFeatures) {
+      // Delay expensive urban triangulation until the player actually zooms in.
+      projectedCities = null;
     }
     if (projectionChanged || projectedBiomes !== biomeFeatures || projectedBiomeMode !== biomeModeEnabled) {
       webglRenderer.setBiomeGeometry(
@@ -410,7 +415,7 @@ function renderMap(): void {
     projectedHeight = viewHeight;
 
     let selectedFeature: GeoJSON.Feature<GeoJSON.Geometry> | null = null;
-    if (selectedCityId) selectedFeature = cityRecords.find((record) => record.id === selectedCityId)?.feature ?? null;
+    if (selectedCityId) selectedFeature = cityRecordsById.get(selectedCityId)?.feature ?? null;
     else if (selectedProvinceId) {
       selectedFeature = allAdministrativeFeatures.find((feature) =>
         String(feature.id ?? feature.properties.shapeID ?? feature.properties.shapeName ?? "unknown") === selectedProvinceId
@@ -439,7 +444,7 @@ function selectCity(id: string, name: string, country: string): void {
   selectedName.textContent = name;
   selectedDetail.textContent = `${name} · ${country}. Urban footprint selected; this is built-up-area geography, not an official municipal boundary.`;
   selectionCard.classList.add("has-selection");
-  const record = cityRecords.find((candidate) => candidate.id === id);
+  const record = cityRecordsById.get(id);
   if (webglRenderer && mapProjection) {
     webglRenderer.setSelection(record?.feature ?? null, (coordinate) => {
       const point = mapProjection!(coordinate as [number, number]);
@@ -480,7 +485,15 @@ function scheduleWebGLRender(): void {
   if (webglRenderFrame) return;
   webglRenderFrame = requestAnimationFrame(() => {
     webglRenderFrame = 0;
-    if (webglRenderer && !webglFailed) webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
+    if (!webglRenderer || webglFailed) return;
+    if (zoomScale >= 2 && cityDataReady && projectedCities !== cityAreaFeatures && mapProjection) {
+      webglRenderer.setCityGeometry(cityAreaFeatures, (coordinate) => {
+        const point = mapProjection!(coordinate as [number, number]);
+        return point ? [point[0], point[1]] : null;
+      });
+      projectedCities = cityAreaFeatures;
+    }
+    webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
   });
 }
 
@@ -580,7 +593,7 @@ svg.addEventListener("click", (event: MouseEvent) => {
     for (let i = candidates.length - 1; i >= 0; i--) {
       const feature = candidates[i]!;
       if (!geoContains(feature, [longitude, latitude])) continue;
-      const record = cityRecords.find((item) => item.feature === feature);
+      const record = cityRecordsById.get(String((feature as CityAreaFeature).id ?? "")) ?? cityRecords.find((item) => item.feature === feature);
       if (record) { selectCity(record.id, record.name, record.country); return; }
     }
   }
