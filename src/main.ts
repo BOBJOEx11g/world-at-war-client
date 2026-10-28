@@ -14,7 +14,7 @@ type BiomeFeature = GeoJSON.Feature<GeoJSON.Geometry, { BIOME_NAME?: string; [ke
 type CityAreaProperties = { name?: string; NAME?: string; scalerank?: number; featurecla?: string; area_sqkm?: number; [key: string]: unknown };
 type CityAreaFeature = GeoJSON.Feature<GeoJSON.Geometry, CityAreaProperties>;
 type LakeFeature = GeoJSON.Feature<GeoJSON.Geometry, { name?: string; NAME?: string; [key: string]: unknown }>;
-type CityRecord = { feature: CityAreaFeature; id: string; name: string; country: string };
+type CityRecord = { feature: CityAreaFeature; id: string; name: string; country: string; isCapital: boolean };
 
 const BIOME_COLORS: Record<string, string> = {
   forest: "#7b9873",
@@ -224,6 +224,7 @@ async function loadCityGeometry(): Promise<void> {
         id: record.id,
         name: record.name,
         country: record.country,
+        isCapital: record.isCapital,
       }));
       cityRecordsById = new Map(cityRecords.map((record) => [record.id, record] as const));
       cityRecordByFeature = new WeakMap(cityRecords.map((record) => [record.feature, record] as const));
@@ -466,6 +467,7 @@ function rebuildStrategicGraph(): void {
       id: record.id,
       name: record.name,
       country: record.country,
+      isCapital: record.isCapital,
       feature: record.feature,
     })));
     drawStrategicGraph();
