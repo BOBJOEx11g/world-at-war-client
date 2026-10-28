@@ -266,7 +266,7 @@ export class WebGLMapRenderer {
     for (const feature of features) {
       const style = getStyle(feature);
       const batch = grouped.get(style.key) ?? { color: style.color, values: [] };
-      collectGeometry(feature.geometry, project, { fill: batch.values, borders: [] });
+      collectGeometry(feature.geometry, project, { fill: batch.values, borders: [] }, 0.65);
       grouped.set(style.key, batch);
     }
     for (const [key, group] of grouped) {
