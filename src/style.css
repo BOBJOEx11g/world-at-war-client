@@ -73,10 +73,19 @@ h1 em { color: #ffffff; font-weight: 400; }
   height: 100%;
   pointer-events: none;
 }
-#map-input-layer {
+#strategic-graph-canvas {
   position: absolute;
   inset: 0;
   z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+#map-input-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
   width: 100%;
   height: 100%;
   cursor: grab;
@@ -87,8 +96,8 @@ h1 em { color: #ffffff; font-weight: 400; }
 #map-input-layer:active { cursor: grabbing; }
 #map-input-layer:focus-visible { outline: 2px solid #dfad46; outline-offset: -3px; }
 .ocean { fill: #245A70; }
-.map-loading { position: absolute; z-index: 4; top: 16px; left: 16px; color: #716958; font-size: 11px; }
-.map-legend { position: absolute; z-index: 3; bottom: 18px; left: 18px; display: flex; gap: 14px; padding: 10px 12px; border: 1px solid #c4b795; background: #e8ddbdF2; color: #514838; font-size: 9px; }
+.map-loading { position: absolute; z-index: 5; top: 16px; left: 16px; color: #716958; font-size: 11px; }
+.map-legend { position: absolute; z-index: 4; bottom: 18px; left: 18px; display: flex; gap: 14px; padding: 10px 12px; border: 1px solid #c4b795; background: #e8ddbdF2; color: #514838; font-size: 9px; }
 .map-legend span { display: flex; align-items: center; gap: 6px; }
 .map-legend i { display: inline-block; width: 9px; height: 9px; }
 .legend-country { background: var(--land); border: 1px solid #171612; }
