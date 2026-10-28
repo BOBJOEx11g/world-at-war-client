@@ -2,11 +2,11 @@ import { geoBounds, geoCentroid, geoDistance } from "d3-geo";
 import type { Feature, Geometry } from "geojson";
 
 type AreaProperties = { name?: string; NAME?: string; [key: string]: unknown };
-type PlaceProperties = { name?: string; NAME?: string; nameascii?: string; adm0name?: string; ADM0NAME?: string; admin?: string; ADMIN?: string; [key: string]: unknown };
+type PlaceProperties = { name?: string; NAME?: string; nameascii?: string; adm0name?: string; ADM0NAME?: string; admin?: string; ADMIN?: string; ADM0CAP?: number | string; [key: string]: unknown };
 type AreaFeature = Feature<Geometry, AreaProperties>;
 type PlaceFeature = Feature<Geometry, PlaceProperties>;
 type Request = { areasUrl: string; placesUrl: string };
-type RecordData = { index: number; id: string; name: string; country: string };
+type RecordData = { index: number; id: string; name: string; country: string; isCapital: boolean };
 type Result = {
   type: "success";
   areas: AreaFeature[];
@@ -119,7 +119,7 @@ scope.onmessage = async (event: MessageEvent<Request>) => {
       const name = placeName && nearestDistance <= 0.08 ? placeName : areaName || placeName || `Urban area ${index + 1}`;
       const country = String(placeProps.adm0name ?? placeProps.ADM0NAME ?? placeProps.admin ?? placeProps.ADMIN ?? "Country unavailable");
       const id = `city-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-      return { index, id, name, country };
+      return { index, id, name, country, isCapital: nearestDistance <= 0.08 && Number(placeProps.ADM0CAP) === 1 };
     });
 
     const spatialIndex = buildSpatialIndex(areas);
