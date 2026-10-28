@@ -151,7 +151,10 @@ function interiorCoordinate(feature: Feature<Geometry, { [key: string]: unknown 
   const first = geometryRings(feature.geometry).flat().find((point) =>
     typeof point[0] === "number" && typeof point[1] === "number" &&
     Number.isFinite(point[0]) && Number.isFinite(point[1]));
-  return first ? [first[0], first[1]] : centroid;
+  const longitude = first?.[0], latitude = first?.[1];
+  return typeof longitude === "number" && typeof latitude === "number"
+    ? [longitude, latitude]
+    : centroid;
 }
 
 function edgeKey(a: Position, b: Position): string {
