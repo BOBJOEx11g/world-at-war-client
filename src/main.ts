@@ -353,7 +353,7 @@ function renderMap(): void {
       webglRenderer.setLakeGeometry(lakeFeatures, project);
       projectedLakes = lakeFeatures;
     }
-    if (zoomScale >= 2 && (projectionChanged || projectedCities !== cityAreaFeatures)) {
+    if (zoomScale >= 4 && (projectionChanged || projectedCities !== cityAreaFeatures)) {
       webglRenderer.setCityGeometry(cityAreaFeatures, project);
       projectedCities = cityAreaFeatures;
     } else if (projectionChanged || projectedCities !== cityAreaFeatures) {
@@ -447,7 +447,7 @@ function scheduleWebGLRender(): void {
   webglRenderFrame = requestAnimationFrame(() => {
     webglRenderFrame = 0;
     if (!webglRenderer || webglFailed) return;
-    if (zoomScale >= 2 && cityDataReady && projectedCities !== cityAreaFeatures && mapProjection) {
+    if (zoomScale >= 4 && cityDataReady && projectedCities !== cityAreaFeatures && mapProjection) {
       webglRenderer.setCityGeometry(cityAreaFeatures, (coordinate) => {
         const point = mapProjection!(coordinate as [number, number]);
         return point ? [point[0], point[1]] : null;
@@ -549,7 +549,7 @@ mapInput.addEventListener("click", (event: MouseEvent) => {
   if (!longitudeLatitude || !longitudeLatitude.every(Number.isFinite)) return;
   const [longitude, latitude] = longitudeLatitude;
 
-  if (zoomScale >= 2 && cityDataReady) {
+  if (zoomScale >= 4 && cityDataReady) {
     const candidates = spatialCandidates(citySpatialIndex, longitude, latitude);
     for (let i = candidates.length - 1; i >= 0; i--) {
       const feature = candidates[i]!;
