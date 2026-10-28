@@ -1,4 +1,4 @@
-import { geoBounds, geoCentroid, geoContains, geoDistance, geoNaturalEarth1 } from "d3-geo";
+import { geoBounds, geoCentroid, geoContains, geoDistance, geoNaturalEarth1, geoPath } from "d3-geo";
 import { BIOME_TAGS } from "./terrain";
 import { WebGLMapRenderer } from "./webgl-renderer";
 import { loadAllFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
@@ -197,6 +197,12 @@ let lakeFeatures: LakeFeature[] = [];
 let cityDataReady = false;
 let selectedProvinceId: string | null = null;
 let strategicGraph: StrategicGraph | null = null;
+// Cached land mask for the strategic graph. It prevents graph links from being
+// drawn over oceans and mapped lakes without rebuilding the mask on every pan.
+let strategicLandClip: Path2D | null = null;
+let strategicLandClipProjection: typeof mapProjection = null;
+let strategicLandClipCountries: CountryFeature[] | null = null;
+let strategicLandClipLakes: LakeFeature[] | null = null;
 let nodesModeEnabled = false;
 let pathsModeEnabled = false;
 let selectedCityId: string | null = null;
@@ -514,6 +520,33 @@ function drawStrategicGraph(): void {
 
   if (pathsModeEnabled) {
     context.save();
+    if (mapProjection && (!strategicLandClip ||
+        strategicLandClipProjection !== mapProjection ||
+        strategicLandClipCountries !== countryFeatures ||
+        strategicLandClipLakes !== lakeFeatures)) {
+      const landPath = new Path2D();
+      const geoPathGenerator = geoPath(mapProjection);
+      for (const feature of countryFeatures) {
+        const pathData = geoPathGenerator(feature);
+        if (pathData) landPath.addPath(new Path2D(pathData));
+      }
+      // Lakes are included in the even-odd mask so graph links cannot cross them.
+      for (const feature of lakeFeatures) {
+        const pathData = geoPathGenerator(feature);
+        if (pathData) landPath.addPath(new Path2D(pathData));
+      }
+      strategicLandClip = landPath;
+      strategicLandClipProjection = mapProjection;
+      strategicLandClipCountries = countryFeatures;
+      strategicLandClipLakes = lakeFeatures;
+    }
+    if (strategicLandClip) {
+      // The cached mask is in untransformed projection coordinates. Install the
+      // clip under the map transform, then draw screen-space graph lines as before.
+      context.setTransform(pixelRatio * zoomScale, 0, 0, pixelRatio * zoomScale, pixelRatio * panX, pixelRatio * panY);
+      context.clip(strategicLandClip, "evenodd");
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    }
     context.strokeStyle = "rgba(35, 36, 31, 0.66)";
     context.lineWidth = Math.max(0.7, Math.min(1.5, zoomScale * 0.16));
     context.setLineDash([4, 3]);
