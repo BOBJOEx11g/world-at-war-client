@@ -62,7 +62,7 @@ app.innerHTML = `
       <div class="section-heading">SELECTED TERRITORY <span class="live-label">MAP</span></div>
       <section class="selection-card" id="selection-card">
         <div class="selection-icon">◎</div>
-        <div><h2 id="selected-name">Select a province or city</h2><p id="selected-detail">Click a state/province polygon. City polygons will take priority when added.</p></div>
+        <div><h2 id="selected-name">Select a province or city</h2><p id="selected-detail">Click a state/province; zoom in to select urban footprints.</p></div>
       </section>
       <div class="section-heading">PROJECT STATUS</div>
       <ul class="status-list">
@@ -604,7 +604,6 @@ svg.addEventListener("pointerdown", (event: PointerEvent) => {
   pointerStartY = event.clientY;
   panStartX = panX;
   panStartY = panY;
-  if (mapContent) mapContent.style.transition = "none";
 });
 
 window.addEventListener("pointermove", (event: PointerEvent) => {
@@ -637,8 +636,7 @@ document.querySelector("#close-about")?.addEventListener("click", () => document
 
 let resizeFrame = 0;
 const resizeObserver = new ResizeObserver(() => {
-  // Coalesce rapid resize events so a drag doesn't rebuild the SVG hundreds
-  // of times per second on slower devices.
+  // Coalesce resize events; geometry is only reprojected when dimensions change.
   if (resizeFrame) cancelAnimationFrame(resizeFrame);
   resizeFrame = requestAnimationFrame(() => {
     resizeFrame = 0;
