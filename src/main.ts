@@ -232,8 +232,8 @@ async function loadCityGeometry(): Promise<void> {
   }
   // Spatial index prevents comparing every urban footprint with every settlement.
   cityRecords = cityAreaFeatures.map((feature, index) => ({ feature, ...nearestCityName(feature, index) }));
-  cityRecordsById = new Map(cityRecords.map((record) => [record.id, record]));
-  cityRecordByFeature = new WeakMap(cityRecords.map((record) => [record.feature, record]));
+  cityRecordsById = new Map(cityRecords.map((record) => [record.id, record] as const));
+  cityRecordByFeature = new WeakMap(cityRecords.map((record) => [record.feature, record] as const));
   citySpatialIndex = buildSpatialIndex(cityAreaFeatures as GeoJSON.Feature<GeoJSON.Geometry>[]);
   cityDataReady = true;
 }
