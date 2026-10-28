@@ -16,8 +16,8 @@
 body { margin: 0; min-width: 320px; min-height: 100vh; background: #e8ddbd; }
 button { font: inherit; color: inherit; cursor: pointer; }
 .topbar { display: flex; flex-direction: column; gap: 0; padding: 0 25px; border-bottom: 1px solid #263746; background: #101923; }
-.topbar-main { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-.resource-bar { min-height: 43px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: stretch; border-top: 1px solid #263746; }
+.topbar-main { width: 100%; max-width: 1160px; margin-inline: auto; min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.resource-bar { width: 100%; max-width: 1160px; margin-inline: auto; min-height: 43px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: stretch; border-top: 1px solid #263746; }
 .resource-item { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; padding: 7px 10px; border-right: 1px solid #263746; color: #eef3f5; }
 .resource-item:first-child { border-left: 1px solid #263746; }
 .resource-icon { display: inline-grid; place-items: center; width: 19px; flex: 0 0 19px; font-size: 17px; line-height: 1; }
