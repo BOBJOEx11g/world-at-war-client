@@ -1,4 +1,4 @@
-import { geoCentroid, geoDistance, geoNaturalEarth1, geoPath } from "d3-geo";
+import { geoBounds, geoCentroid, geoContains, geoDistance, geoNaturalEarth1 } from "d3-geo";
 import { BIOME_TAGS } from "./terrain";
 import { WebGLMapRenderer } from "./webgl-renderer";
 import { loadAllFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
@@ -101,8 +101,69 @@ const selectionCard = document.querySelector<HTMLElement>("#selection-card")!;
 let zoomScale = 1;
 let panX = 0;
 let panY = 0;
-let mapContent: SVGGElement | null = null;
 let mapProjection: ReturnType<typeof geoNaturalEarth1> | null = null;
+let projectedWidth = 0;
+let projectedHeight = 0;
+let projectedCountries: CountryFeature[] | null = null;
+let projectedAdministrative: AdministrativeFeature[] | null = null;
+let projectedLakes: LakeFeature[] | null = null;
+let projectedCities: CityAreaFeature[] | null = null;
+let projectedBiomes: BiomeFeature[] | null = null;
+let projectedBiomeMode: boolean | null = null;
+
+type SpatialIndex = {
+  cells: Map<string, GeoJSON.Feature<GeoJSON.Geometry>[]>;
+  global: GeoJSON.Feature<GeoJSON.Geometry>[];
+};
+const SPATIAL_CELL_DEGREES = 10;
+let administrativeSpatialIndex: SpatialIndex = { cells: new Map(), global: [] };
+let citySpatialIndex: SpatialIndex = { cells: new Map(), global: [] };
+
+function spatialCellKey(longitude: number, latitude: number): string {
+  const x = Math.max(0, Math.min(35, Math.floor((longitude + 180) / SPATIAL_CELL_DEGREES)));
+  const y = Math.max(0, Math.min(17, Math.floor((latitude + 90) / SPATIAL_CELL_DEGREES)));
+  return `${x}:${y}`;
+}
+
+function buildSpatialIndex(features: GeoJSON.Feature<GeoJSON.Geometry>[]): SpatialIndex {
+  const index: SpatialIndex = { cells: new Map(), global: [] };
+  for (const feature of features) {
+    try {
+      const bounds = geoBounds(feature);
+      const west = bounds[0][0], south = bounds[0][1], east = bounds[1][0], north = bounds[1][1];
+      const longitudeRanges: Array<[number, number]> = east < west ? [[west, 180], [-180, east]] : [[west, east]];
+      let keys: string[] = [];
+      for (const [rangeWest, rangeEast] of longitudeRanges) {
+        const minX = Math.max(0, Math.min(35, Math.floor((rangeWest + 180) / SPATIAL_CELL_DEGREES)));
+        const maxX = Math.max(0, Math.min(35, Math.floor((rangeEast + 180) / SPATIAL_CELL_DEGREES)));
+        const minY = Math.max(0, Math.min(17, Math.floor((south + 90) / SPATIAL_CELL_DEGREES)));
+        const maxY = Math.max(0, Math.min(17, Math.floor((north + 90) / SPATIAL_CELL_DEGREES)));
+        for (let x = minX; x <= maxX; x++) for (let y = minY; y <= maxY; y++) keys.push(`${x}:${y}`);
+      }
+      keys = [...new Set(keys)];
+      if (keys.length > 180) { index.global.push(feature); continue; }
+      for (const key of keys) {
+        const bucket = index.cells.get(key) ?? [];
+        bucket.push(feature);
+        index.cells.set(key, bucket);
+      }
+    } catch {
+      index.global.push(feature);
+    }
+  }
+  return index;
+}
+
+function spatialCandidates(index: SpatialIndex, longitude: number, latitude: number): GeoJSON.Feature<GeoJSON.Geometry>[] {
+  const bucket = index.cells.get(spatialCellKey(longitude, latitude)) ?? [];
+  return bucket.length || index.global.length ? [...bucket, ...index.global] : [];
+}
+
+function colorToRgba(hex: string): [number, number, number, number] {
+  const value = hex.replace("#", "");
+  const number = Number.parseInt(value, 16);
+  return [((number >> 16) & 255) / 255, ((number >> 8) & 255) / 255, (number & 255) / 255, 0.44];
+}
 let isPanning = false;
 let pointerStartX = 0;
 let pointerStartY = 0;
@@ -168,6 +229,7 @@ async function loadCityGeometry(): Promise<void> {
   }
   // Spatial index prevents comparing every urban footprint with every settlement.
   cityRecords = cityAreaFeatures.map((feature, index) => ({ feature, ...nearestCityName(feature, index) }));
+  citySpatialIndex = buildSpatialIndex(cityAreaFeatures as GeoJSON.Feature<GeoJSON.Geometry>[]);
   cityDataReady = true;
 }
 
@@ -292,186 +354,81 @@ async function loadCountryGeometry(): Promise<void> {
 
 function renderMap(): void {
   const bounds = mapWrap.getBoundingClientRect();
-  // Use the actual container size: a forced 600px viewBox caused narrow layouts
-  // to crop or scale the map awkwardly when the browser was resized.
   viewWidth = Math.max(1, Math.floor(bounds.width));
   viewHeight = Math.max(1, Math.floor(bounds.height));
   if (viewWidth <= 1 || viewHeight <= 1 || countryCollection.features.length === 0) return;
 
   svg.setAttribute("viewBox", `0 0 ${viewWidth} ${viewHeight}`);
+  // The SVG is now only a lightweight input/accessibility surface. All map pixels
+  // (countries, provinces, lakes, cities, biome fills and selection) are rendered by WebGL.
   svg.replaceChildren();
-
-  // Keep the exact fitted projection. Reusing only its scale and replacing
-  // its translation shifts manually projected geographic markers away from
-  // the country geometry (notably the small-country hit targets and canals).
   const projection = geoNaturalEarth1()
     .fitExtent([[18, 24], [Math.max(19, viewWidth - 18), Math.max(25, viewHeight - 28)]], countryCollection);
   mapProjection = projection;
-  const path = geoPath(projection);
-  if (!webglFailed) {
-    try {
-      if (!webglRenderer) webglRenderer = new WebGLMapRenderer(webglCanvas);
-      webglRenderer.resize(viewWidth, viewHeight);
-      webglRenderer.setGeometry(countryFeatures, (coordinate) => {
-        const point = projection(coordinate as [number, number]);
-        return point ? [point[0], point[1]] : null;
-      });
-      webglRenderer.setAdministrativeGeometry(allAdministrativeFeatures, (coordinate) => {
-        const point = projection(coordinate as [number, number]);
-        return point ? [point[0], point[1]] : null;
-      });
-      webglRenderer.setLakeGeometry(lakeFeatures, (coordinate) => {
-        const point = projection(coordinate as [number, number]);
-        return point ? [point[0], point[1]] : null;
-      });
-      webglRenderer.setCityGeometry(cityAreaFeatures, (coordinate) => {
-        const point = projection(coordinate as [number, number]);
-        return point ? [point[0], point[1]] : null;
-      });
-    } catch (error) {
-      webglFailed = true;
-      console.error("WebGL renderer initialization failed; SVG fallback remains available:", error);
-      webglCanvas.hidden = true;
+
+  const projectionChanged = projectedWidth !== viewWidth || projectedHeight !== viewHeight;
+  const project = (coordinate: GeoJSON.Position): [number, number] | null => {
+    const point = projection(coordinate as [number, number]);
+    return point && Number.isFinite(point[0]) && Number.isFinite(point[1]) ? [point[0], point[1]] : null;
+  };
+
+  try {
+    if (webglFailed) throw new Error("WebGL initialization previously failed.");
+    if (!webglRenderer) webglRenderer = new WebGLMapRenderer(webglCanvas);
+    webglRenderer.resize(viewWidth, viewHeight);
+
+    if (projectionChanged || projectedCountries !== countryFeatures) {
+      webglRenderer.setGeometry(countryFeatures, project);
+      projectedCountries = countryFeatures;
     }
-  }
-  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-  const oceanPattern = document.createElementNS(defs.namespaceURI, "pattern");
-  oceanPattern.setAttribute("id", "ocean-grid");
-  oceanPattern.setAttribute("width", "36");
-  oceanPattern.setAttribute("height", "36");
-  oceanPattern.setAttribute("patternUnits", "userSpaceOnUse");
-  const gridLine = document.createElementNS(defs.namespaceURI, "path");
-  gridLine.setAttribute("d", "M 36 0 L 0 0 0 36");
-  gridLine.setAttribute("fill", "none");
-  gridLine.setAttribute("stroke", "#4b7484");
-  gridLine.setAttribute("stroke-width", "0.45");
-  oceanPattern.append(gridLine);
-  defs.append(oceanPattern);
-
-  // WebGL owns country polygons. SVG is a transparent interaction overlay.
-  const contentGroup = document.createElementNS(svg.namespaceURI, "g") as SVGGElement;
-  mapContent = contentGroup;
-  contentGroup.setAttribute("class", "map-content");
-  const countryLayer = document.createElementNS(svg.namespaceURI, "g");
-  countryLayer.setAttribute("class", "country-layer");
-  contentGroup.append(countryLayer);
-  svg.append(contentGroup);
-
-  // The optional biome overlay sits above country fills but below selectable
-  // province boundaries, so enabling it never hides the territory hitboxes.
-  if (biomeModeEnabled && biomeFeatures.length > 0) {
-    const biomeLayer = document.createElementNS(svg.namespaceURI, "g");
-    biomeLayer.setAttribute("class", "biome-layer");
-    biomeLayer.setAttribute("aria-label", "RESOLVE 2017 biome overlay");
-    // Merge ecoregion paths by biome before adding SVG nodes. The source has
-    // hundreds of regions; one combined path per biome is far cheaper to render
-    // than creating two SVG elements for every region.
-    const pathsByBiome = new Map<string, string[]>();
-    for (const feature of biomeFeatures) {
-      const biome = biomeTagForFeature(feature);
-      const d = path(feature) ?? "";
-      if (!d) continue;
-      const paths = pathsByBiome.get(biome) ?? [];
-      paths.push(d);
-      pathsByBiome.set(biome, paths);
+    if (projectionChanged || projectedAdministrative !== allAdministrativeFeatures) {
+      webglRenderer.setAdministrativeGeometry(allAdministrativeFeatures, project);
+      projectedAdministrative = allAdministrativeFeatures;
     }
-
-    for (const [biome, paths] of pathsByBiome) {
-      const d = paths.join(" ");
-      const fill = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
-      fill.setAttribute("d", d);
-      fill.setAttribute("class", "biome-region biome-" + biome);
-      fill.setAttribute("fill", BIOME_COLORS[biome] ?? "#9b927e");
-      fill.setAttribute("aria-hidden", "true");
-      fill.setAttribute("pointer-events", "none");
-      biomeLayer.append(fill);
-
-      const texture = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
-      texture.setAttribute("d", d);
-      texture.setAttribute("class", "biome-texture");
-      texture.setAttribute("fill", "url(#biome-texture)");
-      texture.setAttribute("aria-hidden", "true");
-      texture.setAttribute("pointer-events", "none");
-      biomeLayer.append(texture);
+    if (projectionChanged || projectedLakes !== lakeFeatures) {
+      webglRenderer.setLakeGeometry(lakeFeatures, project);
+      projectedLakes = lakeFeatures;
     }
-    contentGroup.append(biomeLayer);
+    if (projectionChanged || projectedCities !== cityAreaFeatures) {
+      webglRenderer.setCityGeometry(cityAreaFeatures, project);
+      projectedCities = cityAreaFeatures;
+    }
+    if (projectionChanged || projectedBiomes !== biomeFeatures || projectedBiomeMode !== biomeModeEnabled) {
+      webglRenderer.setBiomeGeometry(
+        biomeModeEnabled ? biomeFeatures : [],
+        project,
+        (feature) => {
+          const biome = biomeTagForFeature(feature as BiomeFeature);
+          return { key: biome, color: colorToRgba(BIOME_COLORS[biome] ?? "#9b927e") };
+        },
+      );
+      projectedBiomes = biomeFeatures;
+      projectedBiomeMode = biomeModeEnabled;
+    }
+    projectedWidth = viewWidth;
+    projectedHeight = viewHeight;
+
+    let selectedFeature: GeoJSON.Feature<GeoJSON.Geometry> | null = null;
+    if (selectedCityId) selectedFeature = cityRecords.find((record) => record.id === selectedCityId)?.feature ?? null;
+    else if (selectedProvinceId) {
+      selectedFeature = allAdministrativeFeatures.find((feature) =>
+        String(feature.id ?? feature.properties.shapeID ?? feature.properties.shapeName ?? "unknown") === selectedProvinceId
+      ) ?? null;
+    }
+    webglRenderer.setSelection(selectedFeature, project);
+    webglCanvas.hidden = false;
+    webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
+  } catch (error) {
+    webglFailed = true;
+    webglCanvas.hidden = false;
+    console.error("World at War WebGL renderer failed:", error);
+    mapStatus.textContent = "WebGL map rendering failed. This browser/device may not support the required renderer.";
   }
 
-  // Always draw the complete global state/province layer, regardless of selection.
-  // It is intentionally above country fills so the internal boundaries remain visible.
-  if (allAdministrativeFeatures.length > 0) {
-    const administrativeLayer = document.createElementNS(svg.namespaceURI, "g");
-    administrativeLayer.setAttribute("class", "administrative-layer");
-    for (const feature of allAdministrativeFeatures) {
-      const provinceId = String(feature.id ?? feature.properties.shapeID ?? feature.properties.shapeName ?? "unknown");
-      const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
-      shape.setAttribute("d", path(feature) ?? "");
-      shape.setAttribute("class", "admin-shape" + (selectedProvinceId === provinceId ? " selected" : ""));
-      shape.setAttribute("stroke", selectedProvinceId === provinceId ? "#302c24" : "transparent");
-      shape.setAttribute("data-province-id", provinceId);
-      shape.setAttribute("tabindex", "0");
-      shape.setAttribute("role", "button");
-      shape.setAttribute("aria-label", String(feature.properties.shapeName ?? "State or province"));
-      shape.setAttribute("pointer-events", "visibleFill");
-      shape.addEventListener("click", (event) => {
-        event.stopPropagation();
-        selectProvince(provinceId);
-      });
-      shape.addEventListener("keydown", (event) => {
-        const keyboardEvent = event as KeyboardEvent;
-        if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-          keyboardEvent.preventDefault();
-          event.stopPropagation();
-          selectProvince(provinceId);
-        }
-      });
-      administrativeLayer.append(shape);
-    }
-    contentGroup.append(administrativeLayer);
-  }
-
-  // City urban-footprint polygons are above provinces so they receive clicks first.
-  // The data shows built-up extent, not official municipal boundaries.
-  // Lake polygons are filled by WebGL; SVG remains only for interaction overlays.
-
-  const cityLayer = document.createElementNS(svg.namespaceURI, "g") as SVGGElement;
-  cityLayer.setAttribute("class", "city-layer");
-  cityLayer.setAttribute("aria-label", "Urban-area polygons");
-  cityLayer.setAttribute("pointer-events", "auto");
-  for (const cityRecord of (zoomScale >= 2 ? cityRecords : [])) {
-    const { feature, id: cityId, name: cityName, country: cityCountry } = cityRecord;
-    const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
-    shape.setAttribute("d", path(feature) ?? "");
-    shape.setAttribute("class", "city-shape" + (selectedCityId === cityId ? " selected" : ""));
-    shape.setAttribute("data-city-id", cityId);
-    shape.setAttribute("data-city-name", cityName);
-    shape.setAttribute("data-city-country", cityCountry);
-    shape.setAttribute("tabindex", "0");
-    shape.setAttribute("role", "button");
-    shape.setAttribute("aria-label", `${cityName} urban area, ${cityCountry}`);
-    shape.setAttribute("pointer-events", "visibleFill");
-    shape.addEventListener("click", (event) => {
-      event.stopPropagation();
-      selectCity(cityId, cityName, cityCountry);
-    });
-    shape.addEventListener("keydown", (event) => {
-      const keyboardEvent = event as KeyboardEvent;
-      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-        keyboardEvent.preventDefault();
-        event.stopPropagation();
-        selectCity(cityId, cityName, cityCountry);
-      }
-    });
-    cityLayer.append(shape);
-  }
-  cityLayer.style.visibility = zoomScale >= 2 ? "visible" : "hidden";
-  contentGroup.append(cityLayer);
-
-  applyViewTransform(false);
-  if (webglRenderer) webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
   loading.hidden = true;
+  if (webglFailed) return;
   mapStatus.textContent = administrativeDataReady
-    ? `${countryFeatures.length.toLocaleString()} countries · ${allAdministrativeFeatures.length.toLocaleString()} state/province polygons · ${cityDataReady ? `${cityRecords.length.toLocaleString()} selectable urban footprints` : "loading urban areas…"}`
+    ? `${countryFeatures.length.toLocaleString()} countries · ${allAdministrativeFeatures.length.toLocaleString()} state/province polygons · ${cityDataReady ? `${cityRecords.length.toLocaleString()} urban footprints` : "loading urban areas…"}`
     : `${countryFeatures.length.toLocaleString()} countries · loading global state/province polygons…`;
 }
 
@@ -481,8 +438,14 @@ function selectCity(id: string, name: string, country: string): void {
   selectedName.textContent = name;
   selectedDetail.textContent = `${name} · ${country}. Urban footprint selected; this is built-up-area geography, not an official municipal boundary.`;
   selectionCard.classList.add("has-selection");
-  for (const shape of svg.querySelectorAll<SVGPathElement>(".city-shape")) shape.classList.toggle("selected", shape.dataset.cityId === id);
-  for (const shape of svg.querySelectorAll<SVGPathElement>(".admin-shape")) shape.classList.remove("selected");
+  const record = cityRecords.find((candidate) => candidate.id === id);
+  if (webglRenderer && mapProjection) {
+    webglRenderer.setSelection(record?.feature ?? null, (coordinate) => {
+      const point = mapProjection!(coordinate as [number, number]);
+      return point ? [point[0], point[1]] : null;
+    });
+    webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
+  }
   mapStatus.textContent = `Selected urban area: ${name} · ${country}`;
 }
 
@@ -502,42 +465,18 @@ function selectProvince(id: string): void {
   selectedName.textContent = provinceName;
   selectedDetail.textContent = `${provinceName} · ${countryName}. State/province polygon selected.`;
   selectionCard.classList.add("has-selection");
-  for (const shape of svg.querySelectorAll<SVGPathElement>(".admin-shape")) {
-    shape.classList.toggle("selected", shape.dataset.provinceId === id);
+  if (webglRenderer && mapProjection) {
+    webglRenderer.setSelection(province, (coordinate) => {
+      const point = mapProjection!(coordinate as [number, number]);
+      return point ? [point[0], point[1]] : null;
+    });
+    webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
   }
   mapStatus.textContent = `Selected state/province: ${provinceName} · ${countryName}`;
 }
 
-function applyViewTransform(animate = true): void {
-  if (!mapContent) return;
-  mapContent.style.transition = animate ? "transform 180ms ease-out" : "none";
-  mapContent.setAttribute("transform", "translate(" + panX + " " + panY + ") scale(" + zoomScale + ")");
+function applyViewTransform(_animate = true): void {
   if (webglRenderer) webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
-  const cityLayer = mapContent.querySelector<SVGGElement>(".city-layer");
-  if (cityLayer) {
-    const shouldShowCities = zoomScale >= 2;
-    cityLayer.style.visibility = shouldShowCities ? "visible" : "hidden";
-    if (shouldShowCities && cityLayer.childElementCount === 0 && cityDataReady && mapProjection) {
-      const path = geoPath(mapProjection);
-      for (const cityRecord of cityRecords) {
-        const { feature, id: cityId, name: cityName, country: cityCountry } = cityRecord;
-        const shape = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
-        shape.setAttribute("d", path(feature) ?? "");
-        shape.setAttribute("class", "city-shape" + (selectedCityId === cityId ? " selected" : ""));
-        shape.setAttribute("data-city-id", cityId);
-        shape.setAttribute("tabindex", "0");
-        shape.setAttribute("role", "button");
-        shape.setAttribute("aria-label", `${cityName} urban area, ${cityCountry}`);
-        shape.setAttribute("pointer-events", "visibleFill");
-        shape.addEventListener("click", (event) => { event.stopPropagation(); selectCity(cityId, cityName, cityCountry); });
-        shape.addEventListener("keydown", (event) => {
-          const keyboardEvent = event as KeyboardEvent;
-          if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") { keyboardEvent.preventDefault(); event.stopPropagation(); selectCity(cityId, cityName, cityCountry); }
-        });
-        cityLayer.append(shape);
-      }
-    }
-  }
 }
 
 function zoomAt(screenX: number, screenY: number, factor: number): void {
@@ -617,6 +556,39 @@ document.querySelector("#reset-view")?.addEventListener("click", () => {
   applyViewTransform();
 });
 
+svg.addEventListener("click", (event: MouseEvent) => {
+  if (suppressNextClick || !mapProjection) return;
+  const bounds = svg.getBoundingClientRect();
+  const longitudeLatitude = mapProjection.invert([
+    (event.clientX - bounds.left - panX) / zoomScale,
+    (event.clientY - bounds.top - panY) / zoomScale,
+  ]);
+  if (!longitudeLatitude || !longitudeLatitude.every(Number.isFinite)) return;
+  const [longitude, latitude] = longitudeLatitude;
+
+  if (zoomScale >= 2 && cityDataReady) {
+    const candidates = spatialCandidates(citySpatialIndex, longitude, latitude);
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const feature = candidates[i]!;
+      if (!geoContains(feature, [longitude, latitude])) continue;
+      const record = cityRecords.find((item) => item.feature === feature);
+      if (record) { selectCity(record.id, record.name, record.country); return; }
+    }
+  }
+
+  if (administrativeDataReady) {
+    const candidates = spatialCandidates(administrativeSpatialIndex, longitude, latitude);
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const feature = candidates[i]!;
+      if (!geoContains(feature, [longitude, latitude])) continue;
+      const admin = feature as AdministrativeFeature;
+      const id = String(admin.id ?? admin.properties.shapeID ?? admin.properties.shapeName ?? "unknown");
+      selectProvince(id);
+      return;
+    }
+  }
+}, false);
+
 svg.addEventListener("wheel", (event: WheelEvent) => {
   event.preventDefault();
   const bounds = svg.getBoundingClientRect();
@@ -690,6 +662,7 @@ void loadCityGeometry()
 void loadAllFirstLevelBoundaries()
   .then((features) => {
     allAdministrativeFeatures = features;
+    administrativeSpatialIndex = buildSpatialIndex(features as GeoJSON.Feature<GeoJSON.Geometry>[]);
     administrativeDataReady = true;
     renderMap();
     mapStatus.textContent = "Global state/province layer visible · " + allAdministrativeFeatures.length.toLocaleString() + " polygons" + (cityDataReady ? ` · ${cityAreaFeatures.length.toLocaleString()} urban footprints loaded` : " · urban areas loading…");
