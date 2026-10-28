@@ -180,6 +180,7 @@ let administrativeDataReady = false;
 let cityAreaFeatures: CityAreaFeature[] = [];
 let cityRecords: CityRecord[] = [];
 let cityRecordsById = new Map<string, CityRecord>();
+let cityRecordByFeature = new WeakMap<object, CityRecord>();
 let lakeFeatures: LakeFeature[] = [];
 let populatedPlaceGrid = new Map<string, PopulatedPlaceFeature[]>();
 let populatedPlaceFeatures: PopulatedPlaceFeature[] = [];
@@ -232,6 +233,7 @@ async function loadCityGeometry(): Promise<void> {
   // Spatial index prevents comparing every urban footprint with every settlement.
   cityRecords = cityAreaFeatures.map((feature, index) => ({ feature, ...nearestCityName(feature, index) }));
   cityRecordsById = new Map(cityRecords.map((record) => [record.id, record]));
+  cityRecordByFeature = new WeakMap(cityRecords.map((record) => [record.feature, record]));
   citySpatialIndex = buildSpatialIndex(cityAreaFeatures as GeoJSON.Feature<GeoJSON.Geometry>[]);
   cityDataReady = true;
 }
@@ -593,7 +595,7 @@ svg.addEventListener("click", (event: MouseEvent) => {
     for (let i = candidates.length - 1; i >= 0; i--) {
       const feature = candidates[i]!;
       if (!geoContains(feature, [longitude, latitude])) continue;
-      const record = cityRecordsById.get(String((feature as CityAreaFeature).id ?? "")) ?? cityRecords.find((item) => item.feature === feature);
+      const record = cityRecordByFeature.get(feature);
       if (record) { selectCity(record.id, record.name, record.country); return; }
     }
   }
