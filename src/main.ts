@@ -208,7 +208,7 @@ const BIOME_GEOJSON_URL =
   "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Resolve_Ecoregions/FeatureServer/0/query?where=1%3D1&outFields=BIOME_NAME&returnGeometry=true&outSR=4326&maxAllowableOffset=0.02&geometryPrecision=4&resultRecordCount=1000&f=geojson";
 
 type CityWorkerResult =
-  | { type: "success"; areas: CityAreaFeature[]; records: Array<{ index: number; id: string; name: string; country: string }>; indexCells: Array<[string, number[]]>; globalIndices: number[] }
+  | { type: "success"; areas: CityAreaFeature[]; records: Array<{ index: number; id: string; name: string; country: string; isCapital: boolean }>; indexCells: Array<[string, number[]]>; globalIndices: number[] }
   | { type: "error"; message: string };
 
 async function loadCityGeometry(): Promise<void> {
