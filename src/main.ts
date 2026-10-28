@@ -2,6 +2,7 @@ import { geoBounds, geoCentroid, geoContains, geoDistance, geoNaturalEarth1 } fr
 import { BIOME_TAGS } from "./terrain";
 import { WebGLMapRenderer } from "./webgl-renderer";
 import { loadAllFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
+import { buildStrategicGraph, type StrategicGraph } from "./world-graph";
 import "./style.css";
 
 // Vite resolves this local asset to a cache-busted production URL.
@@ -78,8 +79,8 @@ app.innerHTML = `
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
-      <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="toggle-biomes" aria-pressed="false">BIOMES: OFF</button><button id="reset-view">RESET VIEW</button></div></div>
-      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><canvas id="world-map-webgl" aria-hidden="true"></canvas><div id="map-input-layer" role="application" aria-label="Interactive world map. Use the mouse or touch to pan and zoom, and click a territory to select it." tabindex="0"></div><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
+      <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="toggle-biomes" aria-pressed="false">BIOMES: OFF</button><button id="toggle-nodes" aria-pressed="false">NODES: OFF</button><button id="toggle-paths" aria-pressed="false">PATHS: OFF</button><button id="reset-view">RESET VIEW</button></div></div>
+      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><canvas id="world-map-webgl" aria-hidden="true"></canvas><canvas id="strategic-graph-canvas" aria-hidden="true"></canvas><div id="map-input-layer" role="application" aria-label="Interactive world map. Use the mouse or touch to pan and zoom, and click a territory to select it." tabindex="0"></div><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
       <div class="map-footer"><span id="map-status">Loading country geometry…</span><span>SCENARIO DATA: 2026 <i>·</i> MAP DATA: PROVISIONAL</span></div>
     </section>
   </main>
@@ -89,6 +90,8 @@ app.innerHTML = `
 const mapWrap = document.querySelector<HTMLDivElement>("#map-wrap")!;
 const mapInput = document.querySelector<HTMLDivElement>("#map-input-layer")!;
 const webglCanvas = document.querySelector<HTMLCanvasElement>("#world-map-webgl")!;
+const strategicGraphCanvas = document.querySelector<HTMLCanvasElement>("#strategic-graph-canvas")!;
+const strategicGraphContext = strategicGraphCanvas.getContext("2d");
 let webglRenderer: WebGLMapRenderer | null = null;
 let webglFailed = false;
 let webglRenderFrame = 0;
@@ -183,12 +186,17 @@ let cityRecordByFeature = new WeakMap<object, CityRecord>();
 let lakeFeatures: LakeFeature[] = [];
 let cityDataReady = false;
 let selectedProvinceId: string | null = null;
+let strategicGraph: StrategicGraph | null = null;
+let nodesModeEnabled = false;
+let pathsModeEnabled = false;
 let selectedCityId: string | null = null;
 let biomeModeEnabled = false;
 let biomeFeatures: BiomeFeature[] = [];
 let biomeDataPromise: Promise<BiomeFeature[]> | null = null;
 const biomeToggle = document.querySelector<HTMLButtonElement>("#toggle-biomes")!;
 const mapLegend = document.querySelector<HTMLDivElement>("#map-legend")!;
+const nodesToggle = document.querySelector<HTMLButtonElement>("#toggle-nodes")!;
+const pathsToggle = document.querySelector<HTMLButtonElement>("#toggle-paths")!;
 
 // Generalize the global ecoregion geometry slightly: this is a broad map overlay,
 // not navigation-grade data, and smaller paths render much faster in the browser.
@@ -224,6 +232,7 @@ async function loadCityGeometry(): Promise<void> {
         global: result.globalIndices.map((index) => cityAreaFeatures[index]!).filter(Boolean),
       };
       cityDataReady = true;
+      rebuildStrategicGraph();
       resolve();
     };
     worker.onerror = () => {
@@ -385,6 +394,7 @@ function renderMap(): void {
     webglRenderer.setSelection(selectedFeature, project);
     webglCanvas.hidden = false;
     webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
+    drawStrategicGraph();
   } catch (error) {
     webglFailed = true;
     webglCanvas.hidden = false;
@@ -417,6 +427,13 @@ function selectCity(id: string, name: string, country: string): void {
 }
 
 function selectProvince(id: string): void {
+  const mergedCity = strategicGraph
+    ? [...strategicGraph.replacedProvinceByCityId.entries()].find(([, provinceId]) => provinceId === id)
+    : undefined;
+  if (mergedCity) {
+    const city = cityRecordsById.get(mergedCity[0]);
+    if (city) { selectCity(city.id, city.name, city.country); return; }
+  }
   selectedCityId = null;
   selectedProvinceId = id;
   const province = allAdministrativeFeatures.find((feature) =>
@@ -442,6 +459,85 @@ function selectProvince(id: string): void {
   mapStatus.textContent = `Selected state/province: ${provinceName} · ${countryName}`;
 }
 
+function rebuildStrategicGraph(): void {
+  if (!administrativeDataReady || !cityDataReady || strategicGraph) return;
+  try {
+    strategicGraph = buildStrategicGraph(allAdministrativeFeatures, cityRecords.map((record) => ({
+      id: record.id,
+      name: record.name,
+      country: record.country,
+      feature: record.feature,
+    })));
+    drawStrategicGraph();
+    mapStatus.textContent = `Strategic graph ready · ${strategicGraph.nodes.length.toLocaleString()} nodes · ${strategicGraph.paths.length.toLocaleString()} provisional paths`;
+  } catch (error) {
+    console.error("Strategic node/path graph failed to build:", error);
+    mapStatus.textContent = "Strategic graph failed to build; map layers remain available.";
+  }
+}
+
+function drawStrategicGraph(): void {
+  const context = strategicGraphContext;
+  if (!context) return;
+  const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+  const width = Math.max(1, Math.floor(viewWidth));
+  const height = Math.max(1, Math.floor(viewHeight));
+  if (strategicGraphCanvas.width !== Math.floor(width * pixelRatio) ||
+      strategicGraphCanvas.height !== Math.floor(height * pixelRatio)) {
+    strategicGraphCanvas.width = Math.floor(width * pixelRatio);
+    strategicGraphCanvas.height = Math.floor(height * pixelRatio);
+  }
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  if (!strategicGraph || (!nodesModeEnabled && !pathsModeEnabled) || !mapProjection) return;
+
+  const projected = new Map<string, [number, number]>();
+  for (const node of strategicGraph.nodes) {
+    const point = mapProjection([node.longitude, node.latitude]);
+    if (point && Number.isFinite(point[0]) && Number.isFinite(point[1])) {
+      projected.set(node.id, [point[0] * zoomScale + panX, point[1] * zoomScale + panY]);
+    }
+  }
+
+  if (pathsModeEnabled) {
+    context.save();
+    context.strokeStyle = "rgba(35, 36, 31, 0.66)";
+    context.lineWidth = Math.max(0.7, Math.min(1.5, zoomScale * 0.16));
+    context.setLineDash([4, 3]);
+    context.beginPath();
+    for (const path of strategicGraph.paths) {
+      const from = projected.get(path.from), to = projected.get(path.to);
+      if (!from || !to) continue;
+      if (Math.max(from[0], to[0]) < -40 || Math.min(from[0], to[0]) > width + 40 ||
+          Math.max(from[1], to[1]) < -40 || Math.min(from[1], to[1]) > height + 40) continue;
+      context.moveTo(from[0], from[1]);
+      if (path.via && mapProjection) {
+        const via = mapProjection(path.via);
+        if (via) context.lineTo(via[0] * zoomScale + panX, via[1] * zoomScale + panY);
+      }
+      context.lineTo(to[0], to[1]);
+    }
+    context.stroke();
+    context.restore();
+  }
+
+  if (nodesModeEnabled) {
+    for (const node of strategicGraph.nodes) {
+      if (node.kind === "province" && zoomScale < 2.5) continue;
+      if (node.kind === "city" && zoomScale < 4) continue;
+      const point = projected.get(node.id);
+      if (!point || point[0] < -12 || point[0] > width + 12 || point[1] < -12 || point[1] > height + 12) continue;
+      context.beginPath();
+      context.arc(point[0], point[1], node.isCapital ? 4.5 : node.kind === "city" ? 2.8 : 2.1, 0, Math.PI * 2);
+      context.fillStyle = node.isCapital ? "#e8ad43" : node.kind === "city" ? "#7b322d" : "#282923";
+      context.fill();
+      context.lineWidth = 1;
+      context.strokeStyle = "#f0e4c7";
+      context.stroke();
+    }
+  }
+}
+
 function scheduleWebGLRender(): void {
   if (webglRenderFrame) return;
   webglRenderFrame = requestAnimationFrame(() => {
@@ -455,6 +551,7 @@ function scheduleWebGLRender(): void {
       projectedCities = cityAreaFeatures;
     }
     webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
+    drawStrategicGraph();
   });
 }
 
@@ -490,6 +587,21 @@ function focusMapCoordinate(longitude: number, latitude: number, scale: number):
 document.querySelector("#zoom-in")?.addEventListener("click", () => zoomAtCenter(1.6));
 document.querySelector("#zoom-out")?.addEventListener("click", () => zoomAtCenter(1 / 1.6));
 document.querySelector("#zoom-caribbean")?.addEventListener("click", () => focusMapCoordinate(-68, 17, 5.5));
+
+nodesToggle.addEventListener("click", () => {
+  nodesModeEnabled = !nodesModeEnabled;
+  nodesToggle.textContent = nodesModeEnabled ? "NODES: ON" : "NODES: OFF";
+  nodesToggle.setAttribute("aria-pressed", String(nodesModeEnabled));
+  nodesToggle.classList.toggle("is-active", nodesModeEnabled);
+  drawStrategicGraph();
+});
+pathsToggle.addEventListener("click", () => {
+  pathsModeEnabled = !pathsModeEnabled;
+  pathsToggle.textContent = pathsModeEnabled ? "PATHS: ON" : "PATHS: OFF";
+  pathsToggle.setAttribute("aria-pressed", String(pathsModeEnabled));
+  pathsToggle.classList.toggle("is-active", pathsModeEnabled);
+  drawStrategicGraph();
+});
 
 function updateBiomeLegend(): void {
   if (!biomeModeEnabled) {
@@ -697,6 +809,7 @@ void loadAllFirstLevelBoundaries()
     allAdministrativeFeatures = features;
     administrativeSpatialIndex = buildSpatialIndex(features as GeoJSON.Feature<GeoJSON.Geometry>[]);
     administrativeDataReady = true;
+    rebuildStrategicGraph();
     renderMap();
     mapStatus.textContent = "Global state/province layer visible · " + allAdministrativeFeatures.length.toLocaleString() + " polygons" + (cityDataReady ? ` · ${cityAreaFeatures.length.toLocaleString()} urban footprints loaded` : " · urban areas loading…");
   })
