@@ -92,6 +92,7 @@ const svg = document.querySelector<SVGSVGElement>("#world-map")!;
 const webglCanvas = document.querySelector<HTMLCanvasElement>("#world-map-webgl")!;
 let webglRenderer: WebGLMapRenderer | null = null;
 let webglFailed = false;
+let webglRenderFrame = 0;
 const loading = document.querySelector<HTMLDivElement>("#map-loading")!;
 const mapStatus = document.querySelector<HTMLSpanElement>("#map-status")!;
 const selectedName = document.querySelector<HTMLHeadingElement>("#selected-name")!;
@@ -444,7 +445,7 @@ function selectCity(id: string, name: string, country: string): void {
       const point = mapProjection!(coordinate as [number, number]);
       return point ? [point[0], point[1]] : null;
     });
-    webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
+    scheduleWebGLRender();
   }
   mapStatus.textContent = `Selected urban area: ${name} · ${country}`;
 }
@@ -470,13 +471,21 @@ function selectProvince(id: string): void {
       const point = mapProjection!(coordinate as [number, number]);
       return point ? [point[0], point[1]] : null;
     });
-    webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
+    scheduleWebGLRender();
   }
   mapStatus.textContent = `Selected state/province: ${provinceName} · ${countryName}`;
 }
 
+function scheduleWebGLRender(): void {
+  if (webglRenderFrame) return;
+  webglRenderFrame = requestAnimationFrame(() => {
+    webglRenderFrame = 0;
+    if (webglRenderer && !webglFailed) webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
+  });
+}
+
 function applyViewTransform(_animate = true): void {
-  if (webglRenderer) webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
+  scheduleWebGLRender();
 }
 
 function zoomAt(screenX: number, screenY: number, factor: number): void {
