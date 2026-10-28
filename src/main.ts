@@ -540,7 +540,7 @@ document.querySelector("#reset-view")?.addEventListener("click", () => {
 });
 
 mapInput.addEventListener("click", (event: MouseEvent) => {
-  if (suppressNextClick || !mapProjection) return;
+  if (suppressNextClick || !mapProjection?.invert) return;
   const bounds = mapInput.getBoundingClientRect();
   const longitudeLatitude = mapProjection.invert([
     (event.clientX - bounds.left - panX) / zoomScale,
