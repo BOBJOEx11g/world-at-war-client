@@ -119,7 +119,7 @@ scope.onmessage = async (event: MessageEvent<Request>) => {
       const name = placeName && nearestDistance <= 0.08 ? placeName : areaName || placeName || `Urban area ${index + 1}`;
       const country = String(placeProps.adm0name ?? placeProps.ADM0NAME ?? placeProps.admin ?? placeProps.ADMIN ?? "Country unavailable");
       const id = `city-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-      return { index, id, name, country, isCapital: nearestDistance <= 0.08 && Number(placeProps.ADM0CAP) === 1 };
+      return { index, id, name, country, isCapital: nearestDistance <= 0.02 && Number(placeProps.ADM0CAP) === 1 };
     });
 
     const spatialIndex = buildSpatialIndex(areas);
