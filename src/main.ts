@@ -428,11 +428,9 @@ function selectCity(id: string, name: string, country: string): void {
 }
 
 function selectProvince(id: string): void {
-  const mergedCity = strategicGraph
-    ? [...strategicGraph.replacedProvinceByCityId.entries()].find(([, provinceId]) => provinceId === id)
-    : undefined;
-  if (mergedCity) {
-    const city = cityRecordsById.get(mergedCity[0]);
+  const mergedCityId = strategicGraph?.cityIdByReplacedProvinceId.get(id);
+  if (mergedCityId) {
+    const city = cityRecordsById.get(mergedCityId);
     if (city) { selectCity(city.id, city.name, city.country); return; }
   }
   selectedCityId = null;
