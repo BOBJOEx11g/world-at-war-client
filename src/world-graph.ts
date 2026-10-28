@@ -37,6 +37,7 @@ export type StrategicGraph = {
   nodeById: Map<string, StrategicNode>;
   territoryNodeByProvinceId: Map<string, string>;
   replacedProvinceByCityId: Map<string, string>;
+  cityIdByReplacedProvinceId: Map<string, string>;
 };
 
 function provinceId(feature: AdministrativeFeature): string {
@@ -118,6 +119,7 @@ export function buildStrategicGraph(
   const nodeById = new Map<string, StrategicNode>();
   const territoryNodeByProvinceId = new Map<string, string>();
   const replacedProvinceByCityId = new Map<string, string>();
+  const cityIdByReplacedProvinceId = new Map<string, string>();
   const provinceNodeIds = new Map<string, string>();
   const provinceById = new Map(provinces.map((feature) => [provinceId(feature), feature] as const));
 
@@ -142,7 +144,8 @@ export function buildStrategicGraph(
       if (!boundsContain(candidate.bounds, provinceBounds)) continue;
       if (cityFullyCoversProvince(candidate.city, province)) {
         coveringCityByProvince.set(id, candidate.city);
-        replacedProvinceByCityId.set(candidate.city.id, id);
+        if (!replacedProvinceByCityId.has(candidate.city.id)) replacedProvinceByCityId.set(candidate.city.id, id);
+        cityIdByReplacedProvinceId.set(id, candidate.city.id);
         break;
       }
     }
@@ -163,8 +166,7 @@ export function buildStrategicGraph(
         provinceId: id,
         isCapital: coveringCity.isCapital ?? false,
       };
-      nodes.push(node);
-      nodeById.set(node.id, node);
+      if (!nodeById.has(node.id)) { nodes.push(node); nodeById.set(node.id, node); }
       territoryNodeByProvinceId.set(id, node.id);
       provinceNodeIds.set(id, node.id);
       continue;
@@ -272,5 +274,5 @@ export function buildStrategicGraph(
   for (const [id, feature] of provinceById) {
     if (!territoryNodeByProvinceId.has(id) && feature) territoryNodeByProvinceId.set(id, `province:${id}`);
   }
-  return { nodes, paths, nodeById, territoryNodeByProvinceId, replacedProvinceByCityId };
+  return { nodes, paths, nodeById, territoryNodeByProvinceId, replacedProvinceByCityId, cityIdByReplacedProvinceId };
 }
