@@ -44,9 +44,19 @@ if (!app) throw new Error("Missing #app root element.");
 
 app.innerHTML = `
   <header class="topbar">
-    <a class="brand" href="#" aria-label="World at War home"><span class="brand-mark">W</span><span>WORLD <b>AT WAR</b></span></a>
-    <div class="scenario"><span class="status-dot"></span> MODERN WORLD <span class="scenario-year">2026</span></div>
-    <div class="topbar-right"><span class="connection"><span class="status-dot muted"></span> SERVER NOT CONNECTED</span><button class="icon-button" id="about-button" aria-label="About this project">?</button></div>
+    <div class="topbar-main">
+      <a class="brand" href="#" aria-label="World at War home"><span class="brand-mark">W</span><span>WORLD <b>AT WAR</b></span></a>
+      <div class="scenario"><span class="status-dot"></span> MODERN WORLD <span class="scenario-year">2026</span></div>
+      <div class="topbar-right"><span class="connection"><span class="status-dot muted"></span> SERVER NOT CONNECTED</span><button class="icon-button" id="about-button" aria-label="About this project">?</button></div>
+    </div>
+    <nav class="resource-bar" aria-label="Player resources">
+      <div class="resource-item"><span class="resource-icon money-icon" aria-hidden="true">◈</span><span class="resource-name">MONEY</span><strong>—</strong></div>
+      <div class="resource-item"><span class="resource-icon food-icon" aria-hidden="true">♧</span><span class="resource-name">FOOD</span><strong>—</strong></div>
+      <div class="resource-item"><span class="resource-icon oil-icon" aria-hidden="true">▤</span><span class="resource-name">OIL</span><strong>—</strong></div>
+      <div class="resource-item"><span class="resource-icon metal-icon" aria-hidden="true">⚒</span><span class="resource-name">METAL</span><strong>—</strong></div>
+      <div class="resource-item"><span class="resource-icon manpower-icon" aria-hidden="true">♟</span><span class="resource-name">MANPOWER</span><strong>—</strong></div>
+      <div class="resource-item"><span class="resource-icon gold-icon" aria-hidden="true">◆</span><span class="resource-name">GOLD</span><strong>—</strong></div>
+    </nav>
   </header>
   <main class="layout">
     <aside class="sidebar">
