@@ -39,7 +39,7 @@ function simplifyRing(points: ProjectedPoint[], tolerance: number): ProjectedPoi
 }
 
 function appendRingSegments(points: ProjectedPoint[], output: number[], thickness = 1): void {
-  if (points.length < 2) return;
+  if (points.length < 2 || thickness <= 0) return;
   const half = thickness / 2;
   for (let i = 0; i < points.length; i++) {
     const a = points[i]!;
@@ -126,6 +126,18 @@ void main() {
   vec2 clip = (p / u_resolution) * 2.0 - 1.0;
   gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
 }`;
+const borderVertexShader = `
+attribute vec2 a_position;
+attribute vec2 a_offset;
+uniform vec2 u_resolution;
+uniform vec2 u_translation;
+uniform float u_scale;
+void main() {
+  vec2 p = a_position * u_scale + u_translation;
+  vec2 clip = (p / u_resolution) * 2.0 - 1.0;
+  clip += (a_offset / u_resolution) * 2.0;
+  gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+}`;
 const fragmentShader = `
 precision mediump float;
 uniform vec4 u_color;
@@ -156,6 +168,13 @@ export class WebGLMapRenderer {
   readonly canvas: HTMLCanvasElement;
   private readonly gl: WebGLRenderingContext;
   private readonly program: WebGLProgram;
+  private readonly borderProgram: WebGLProgram;
+  private readonly borderPosition: number;
+  private readonly borderOffset: number;
+  private readonly borderResolution: WebGLUniformLocation;
+  private readonly borderTranslation: WebGLUniformLocation;
+  private readonly borderScale: WebGLUniformLocation;
+  private readonly borderColor: WebGLUniformLocation;
   private readonly position: number;
   private readonly resolution: WebGLUniformLocation;
   private readonly translation: WebGLUniformLocation;
@@ -207,6 +226,29 @@ export class WebGLMapRenderer {
       throw new Error(message);
     }
     this.program = program;
+
+    const borderProgram = gl.createProgram();
+    if (!borderProgram) throw new Error("Unable to allocate WebGL border program.");
+    const borderVertex = compileShader(gl, gl.VERTEX_SHADER, borderVertexShader);
+    const borderFragment = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShader);
+    gl.attachShader(borderProgram, borderVertex);
+    gl.attachShader(borderProgram, borderFragment);
+    gl.linkProgram(borderProgram);
+    gl.deleteShader(borderVertex);
+    gl.deleteShader(borderFragment);
+    if (!gl.getProgramParameter(borderProgram, gl.LINK_STATUS)) {
+      const message = gl.getProgramInfoLog(borderProgram) ?? "WebGL border program link failed.";
+      gl.deleteProgram(borderProgram);
+      throw new Error(message);
+    }
+    this.borderProgram = borderProgram;
+    this.borderPosition = gl.getAttribLocation(borderProgram, "a_position");
+    this.borderOffset = gl.getAttribLocation(borderProgram, "a_offset");
+    this.borderResolution = gl.getUniformLocation(borderProgram, "u_resolution")!;
+    this.borderTranslation = gl.getUniformLocation(borderProgram, "u_translation")!;
+    this.borderScale = gl.getUniformLocation(borderProgram, "u_scale")!;
+    this.borderColor = gl.getUniformLocation(borderProgram, "u_color")!;
+
     this.position = gl.getAttribLocation(program, "a_position");
     this.resolution = gl.getUniformLocation(program, "u_resolution")!;
     this.translation = gl.getUniformLocation(program, "u_translation")!;
@@ -236,32 +278,32 @@ export class WebGLMapRenderer {
     const arrays: GeometryArrays = { fill: [], borders: [] };
     const low: GeometryArrays = { fill: [], borders: [] };
     for (const feature of features) {
-      collectGeometry(feature.geometry, project, arrays);
-      collectGeometry(feature.geometry, project, low, 0.65);
+      collectGeometry(feature.geometry, project, arrays, 0, 2.6);
+      collectGeometry(feature.geometry, project, low, 0.65, 2.6);
     }
     this.fillCount = uploadBuffer(this.gl, this.fillBuffer, arrays.fill);
-    this.borderCount = uploadBuffer(this.gl, this.borderBuffer, arrays.borders);
+    this.borderCount = uploadBorderBuffer(this.gl, this.borderBuffer, arrays.borders);
     this.lowFillCount = uploadBuffer(this.gl, this.lowFillBuffer, low.fill);
-    this.lowBorderCount = uploadBuffer(this.gl, this.lowBorderBuffer, low.borders);
+    this.lowBorderCount = uploadBorderBuffer(this.gl, this.lowBorderBuffer, low.borders);
   }
 
   setAdministrativeGeometry(features: Feature<Geometry>[], project: Projection): void {
     const arrays: BoundaryArrays = { borders: [] };
     const low: BoundaryArrays = { borders: [] };
     for (const feature of features) {
-      collectBoundaryGeometry(feature.geometry, project, arrays);
-      collectBoundaryGeometry(feature.geometry, project, low, 0.65);
+      collectBoundaryGeometry(feature.geometry, project, arrays, 0, 0.8);
+      collectBoundaryGeometry(feature.geometry, project, low, 0.65, 0.8);
     }
-    this.administrativeCount = uploadBuffer(this.gl, this.administrativeBuffer, arrays.borders);
-    this.lowAdministrativeCount = uploadBuffer(this.gl, this.lowAdministrativeBuffer, low.borders);
+    this.administrativeCount = uploadBorderBuffer(this.gl, this.administrativeBuffer, arrays.borders);
+    this.lowAdministrativeCount = uploadBorderBuffer(this.gl, this.lowAdministrativeBuffer, low.borders);
   }
 
   setLakeGeometry(features: Feature<Geometry>[], project: Projection): void {
     const arrays: GeometryArrays = { fill: [], borders: [] };
     const low: GeometryArrays = { fill: [], borders: [] };
     for (const feature of features) {
-      collectGeometry(feature.geometry, project, arrays);
-      collectGeometry(feature.geometry, project, low, 0.65);
+      collectGeometry(feature.geometry, project, arrays, 0, 0);
+      collectGeometry(feature.geometry, project, low, 0.65, 0);
     }
     this.lakeVertexCount = uploadBuffer(this.gl, this.lakeBuffer, arrays.fill);
     this.lowLakeVertexCount = uploadBuffer(this.gl, this.lowLakeBuffer, low.fill);
@@ -269,9 +311,9 @@ export class WebGLMapRenderer {
 
   setCityGeometry(features: Feature<Geometry>[], project: Projection): void {
     const arrays: GeometryArrays = { fill: [], borders: [] };
-    for (const feature of features) collectGeometry(feature.geometry, project, arrays);
+    for (const feature of features) collectGeometry(feature.geometry, project, arrays, 0, 0.8);
     this.cityVertexCount = uploadBuffer(this.gl, this.cityBuffer, arrays.fill);
-    this.cityBorderCount = uploadBuffer(this.gl, this.cityBorderBuffer, arrays.borders);
+    this.cityBorderCount = uploadBorderBuffer(this.gl, this.cityBorderBuffer, arrays.borders);
   }
 
   setBiomeGeometry(
@@ -285,7 +327,7 @@ export class WebGLMapRenderer {
     for (const feature of features) {
       const style = getStyle(feature);
       const batch = grouped.get(style.key) ?? { color: style.color, values: [] };
-      collectGeometry(feature.geometry, project, { fill: batch.values, borders: [] }, 0.65);
+      collectGeometry(feature.geometry, project, { fill: batch.values, borders: [] }, 0.65, 0);
       grouped.set(style.key, batch);
     }
     for (const [key, group] of grouped) {
@@ -298,9 +340,9 @@ export class WebGLMapRenderer {
 
   setSelection(feature: Feature<Geometry> | null, project: Projection): void {
     const arrays: GeometryArrays = { fill: [], borders: [] };
-    if (feature) collectGeometry(feature.geometry, project, arrays);
+    if (feature) collectGeometry(feature.geometry, project, arrays, 0, 2.2);
     this.selectionFillCount = uploadBuffer(this.gl, this.selectionFillBuffer, arrays.fill);
-    this.selectionBorderCount = uploadBuffer(this.gl, this.selectionBorderBuffer, arrays.borders);
+    this.selectionBorderCount = uploadBorderBuffer(this.gl, this.selectionBorderBuffer, arrays.borders);
   }
 
   resize(width: number, height: number): void {
@@ -320,33 +362,46 @@ export class WebGLMapRenderer {
     const gl = this.gl;
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(this.program);
-    // Projection coordinates and pan are in CSS pixels; the viewport alone uses device pixels.
-    gl.uniform2f(this.resolution, Math.max(1, width), Math.max(1, height));
-    gl.uniform2f(this.translation, panX, panY);
-    gl.uniform1f(this.scale, zoom);
-    gl.enableVertexAttribArray(this.position);
 
-    const draw = (buffer: WebGLBuffer, count: number, mode: number, color: Rgba): void => {
+    const drawFill = (buffer: WebGLBuffer, count: number, color: Rgba): void => {
       if (count <= 0) return;
+      gl.useProgram(this.program);
+      gl.uniform2f(this.resolution, Math.max(1, width), Math.max(1, height));
+      gl.uniform2f(this.translation, panX, panY);
+      gl.uniform1f(this.scale, zoom);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.enableVertexAttribArray(this.position);
       gl.vertexAttribPointer(this.position, 2, gl.FLOAT, false, 0, 0);
       gl.uniform4f(this.color, color[0], color[1], color[2], color[3]);
-      gl.drawArrays(mode, 0, count);
+      gl.drawArrays(gl.TRIANGLES, 0, count);
+    };
+    const drawBorder = (buffer: WebGLBuffer, count: number, color: Rgba): void => {
+      if (count <= 0) return;
+      gl.useProgram(this.borderProgram);
+      gl.uniform2f(this.borderResolution, Math.max(1, width), Math.max(1, height));
+      gl.uniform2f(this.borderTranslation, panX, panY);
+      gl.uniform1f(this.borderScale, zoom);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.enableVertexAttribArray(this.borderPosition);
+      gl.enableVertexAttribArray(this.borderOffset);
+      gl.vertexAttribPointer(this.borderPosition, 2, gl.FLOAT, false, 16, 0);
+      gl.vertexAttribPointer(this.borderOffset, 2, gl.FLOAT, false, 16, 8);
+      gl.uniform4f(this.borderColor, color[0], color[1], color[2], color[3]);
+      gl.drawArrays(gl.TRIANGLES, 0, count);
     };
 
     const detailed = zoom >= 2;
-    draw(detailed ? this.fillBuffer : this.lowFillBuffer, detailed ? this.fillCount : this.lowFillCount, gl.TRIANGLES, [0.91, 0.86, 0.73, 1]);
-    for (const batch of this.biomeBatches.values()) draw(batch.buffer, batch.count, gl.TRIANGLES, batch.color);
-    draw(detailed ? this.lakeBuffer : this.lowLakeBuffer, detailed ? this.lakeVertexCount : this.lowLakeVertexCount, gl.TRIANGLES, [0.14, 0.35, 0.44, 1]);
-    draw(detailed ? this.borderBuffer : this.lowBorderBuffer, detailed ? this.borderCount : this.lowBorderCount, gl.LINES, [0.09, 0.09, 0.07, 1]);
-    draw(detailed ? this.administrativeBuffer : this.lowAdministrativeBuffer, detailed ? this.administrativeCount : this.lowAdministrativeCount, gl.LINES, [0.52, 0.51, 0.47, 0.96]);
+    drawFill(detailed ? this.fillBuffer : this.lowFillBuffer, detailed ? this.fillCount : this.lowFillCount, [0.91, 0.86, 0.73, 1]);
+    for (const batch of this.biomeBatches.values()) drawFill(batch.buffer, batch.count, batch.color);
+    drawFill(detailed ? this.lakeBuffer : this.lowLakeBuffer, detailed ? this.lakeVertexCount : this.lowLakeVertexCount, [0.14, 0.35, 0.44, 1]);
+    drawBorder(detailed ? this.borderBuffer : this.lowBorderBuffer, detailed ? this.borderCount : this.lowBorderCount, [0.09, 0.09, 0.07, 1]);
+    drawBorder(detailed ? this.administrativeBuffer : this.lowAdministrativeBuffer, detailed ? this.administrativeCount : this.lowAdministrativeCount, [0.52, 0.51, 0.47, 0.96]);
     if (zoom >= 2) {
-      draw(this.cityBuffer, this.cityVertexCount, gl.TRIANGLES, [0.65, 0.48, 0.31, 0.72]);
-      draw(this.cityBorderBuffer, this.cityBorderCount, gl.LINES, [0.96, 0.90, 0.73, 0.95]);
+      drawFill(this.cityBuffer, this.cityVertexCount, [0.65, 0.48, 0.31, 0.72]);
+      drawBorder(this.cityBorderBuffer, this.cityBorderCount, [0.96, 0.90, 0.73, 0.95]);
     }
-    draw(this.selectionFillBuffer, this.selectionFillCount, gl.TRIANGLES, [0.87, 0.62, 0.18, 0.45]);
-    draw(this.selectionBorderBuffer, this.selectionBorderCount, gl.LINES, [1, 0.94, 0.72, 1]);
+    drawFill(this.selectionFillBuffer, this.selectionFillCount, [0.87, 0.62, 0.18, 0.45]);
+    drawBorder(this.selectionBorderBuffer, this.selectionBorderCount, [1, 0.94, 0.72, 1]);
   }
 
   destroy(): void {
@@ -354,5 +409,6 @@ export class WebGLMapRenderer {
     for (const batch of this.biomeBatches.values()) this.gl.deleteBuffer(batch.buffer);
     this.biomeBatches.clear();
     this.gl.deleteProgram(this.program);
+    this.gl.deleteProgram(this.borderProgram);
   }
 }
