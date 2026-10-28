@@ -74,7 +74,6 @@ function boundsContain(outer: [[number, number], [number, number]], inner: [[num
 function cityFullyCoversProvince(city: GraphCity, province: AdministrativeFeature): boolean {
   if (!city.feature.geometry || !province.geometry) return false;
   try {
-    if (!boundsContain(geoBounds(city.feature) as [[number, number], [number, number]], geoBounds(province) as [[number, number], [number, number]])) return false;
     const positions = outerRingPositions(province.geometry);
     if (positions.length < 4) return false;
     // Every outer-ring vertex must be inside the urban polygon. This is a conservative
@@ -122,13 +121,27 @@ export function buildStrategicGraph(
   const provinceById = new Map(provinces.map((feature) => [provinceId(feature), feature] as const));
 
   const coveringCityByProvince = new Map<string, GraphCity>();
-  // Only test city bounding boxes that can possibly contain the whole province.
+  const cityBounds = cities.map((city) => {
+    try { return { city, bounds: geoBounds(city.feature) as [[number, number], [number, number]] }; }
+    catch { return null; }
+  }).filter((entry): entry is { city: GraphCity; bounds: [[number, number], [number, number]] } => entry !== null)
+    .sort((a, b) => {
+      const areaA = Math.abs((a.bounds[1][0] - a.bounds[0][0]) * (a.bounds[1][1] - a.bounds[0][1]));
+      const areaB = Math.abs((b.bounds[1][0] - b.bounds[0][0]) * (b.bounds[1][1] - b.bounds[0][1]));
+      return areaB - areaA;
+    });
   for (const province of provinces) {
     const id = provinceId(province);
-    for (const city of cities) {
-      if (cityFullyCoversProvince(city, province)) {
-        coveringCityByProvince.set(id, city);
-        replacedProvinceByCityId.set(city.id, id);
+    let provinceBounds: [[number, number], [number, number]];
+    try { provinceBounds = geoBounds(province) as [[number, number], [number, number]]; } catch { continue; }
+    const provinceArea = Math.abs((provinceBounds[1][0] - provinceBounds[0][0]) * (provinceBounds[1][1] - provinceBounds[0][1]));
+    for (const candidate of cityBounds) {
+      const cityArea = Math.abs((candidate.bounds[1][0] - candidate.bounds[0][0]) * (candidate.bounds[1][1] - candidate.bounds[0][1]));
+      if (cityArea + 1e-6 < provinceArea) break;
+      if (!boundsContain(candidate.bounds, provinceBounds)) continue;
+      if (cityFullyCoversProvince(candidate.city, province)) {
+        coveringCityByProvince.set(id, candidate.city);
+        replacedProvinceByCityId.set(candidate.city.id, id);
         break;
       }
     }
@@ -172,12 +185,34 @@ export function buildStrategicGraph(
     provinceNodeIds.set(id, node.id);
   }
 
+  // Build a coarse spatial grid so city-to-province lookup doesn't scan every province.
+  const provinceGrid = new Map<string, AdministrativeFeature[]>();
+  const globalProvinces: AdministrativeFeature[] = [];
+  const cellKey = (longitude: number, latitude: number) => `${Math.floor((longitude + 180) / 5)}:${Math.floor((latitude + 90) / 5)}`;
+  for (const province of provinces) {
+    try {
+      const [[west, south], [east, north]] = geoBounds(province);
+      const minX = Math.max(0, Math.min(71, Math.floor((west + 180) / 5)));
+      const maxX = Math.max(0, Math.min(71, Math.floor((east + 180) / 5)));
+      const minY = Math.max(0, Math.min(35, Math.floor((south + 90) / 5)));
+      const maxY = Math.max(0, Math.min(35, Math.floor((north + 90) / 5)));
+      if ((maxX - minX + 1) * (maxY - minY + 1) > 250) { globalProvinces.push(province); continue; }
+      for (let x = minX; x <= maxX; x++) for (let y = minY; y <= maxY; y++) {
+        const key = `${x}:${y}`;
+        const bucket = provinceGrid.get(key) ?? [];
+        bucket.push(province);
+        provinceGrid.set(key, bucket);
+      }
+    } catch { globalProvinces.push(province); }
+  }
+
   // Urban nodes remain separate only when they do not replace an entire province.
   for (const city of cities) {
     if (replacedProvinceByCityId.has(city.id)) continue;
     const center = geoCentroid(city.feature);
     if (!Number.isFinite(center[0]) || !Number.isFinite(center[1])) continue;
-    const parent = provinces.find((province) => {
+    const candidates = [...(provinceGrid.get(cellKey(center[0], center[1])) ?? []), ...globalProvinces];
+    const parent = candidates.find((province) => {
       try { return geoContains(province, center); } catch { return false; }
     });
     const parentId = parent ? provinceId(parent) : null;
