@@ -13,7 +13,6 @@ type BiomeFeature = GeoJSON.Feature<GeoJSON.Geometry, { BIOME_NAME?: string; [ke
 type CityAreaProperties = { name?: string; NAME?: string; scalerank?: number; featurecla?: string; area_sqkm?: number; [key: string]: unknown };
 type CityAreaFeature = GeoJSON.Feature<GeoJSON.Geometry, CityAreaProperties>;
 type LakeFeature = GeoJSON.Feature<GeoJSON.Geometry, { name?: string; NAME?: string; [key: string]: unknown }>;
-type PopulatedPlaceFeature = GeoJSON.Feature<GeoJSON.Geometry, { name?: string; NAME?: string; nameascii?: string; adm0name?: string; [key: string]: unknown }>;
 type CityRecord = { feature: CityAreaFeature; id: string; name: string; country: string };
 
 const BIOME_COLORS: Record<string, string> = {
@@ -182,8 +181,6 @@ let cityRecords: CityRecord[] = [];
 let cityRecordsById = new Map<string, CityRecord>();
 let cityRecordByFeature = new WeakMap<object, CityRecord>();
 let lakeFeatures: LakeFeature[] = [];
-let populatedPlaceGrid = new Map<string, PopulatedPlaceFeature[]>();
-let populatedPlaceFeatures: PopulatedPlaceFeature[] = [];
 let cityDataReady = false;
 let selectedProvinceId: string | null = null;
 let selectedCityId: string | null = null;
@@ -202,74 +199,39 @@ const LAKES_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-ear
 const BIOME_GEOJSON_URL =
   "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Resolve_Ecoregions/FeatureServer/0/query?where=1%3D1&outFields=BIOME_NAME&returnGeometry=true&outSR=4326&maxAllowableOffset=0.02&geometryPrecision=4&resultRecordCount=1000&f=geojson";
 
-function placeGridKey(longitude: number, latitude: number): string {
-  return `${Math.floor((longitude + 180) / 5)}:${Math.floor((latitude + 90) / 5)}`;
-}
+type CityWorkerResult =
+  | { type: "success"; areas: CityAreaFeature[]; records: Array<{ index: number; id: string; name: string; country: string }>; indexCells: Array<[string, number[]]>; globalIndices: number[] }
+  | { type: "error"; message: string };
 
 async function loadCityGeometry(): Promise<void> {
-  const [areasResponse, placesResponse] = await Promise.all([
-    fetch(CITY_AREAS_GEOJSON_URL, { headers: { accept: "application/geo+json, application/json" }, signal: AbortSignal.timeout(30000) }),
-    fetch(POPULATED_PLACES_GEOJSON_URL, { headers: { accept: "application/geo+json, application/json" }, signal: AbortSignal.timeout(30000) }),
-  ]);
-  if (!areasResponse.ok) throw new Error(`Urban-area request failed: HTTP ${areasResponse.status}`);
-  if (!placesResponse.ok) throw new Error(`Populated-place request failed: HTTP ${placesResponse.status}`);
-  const [areas, places] = await Promise.all([areasResponse.json(), placesResponse.json()]) as [GeoJSON.FeatureCollection<GeoJSON.Geometry, CityAreaProperties>, GeoJSON.FeatureCollection<GeoJSON.Geometry, PopulatedPlaceFeature["properties"]>];
-  if (areas.type !== "FeatureCollection" || !Array.isArray(areas.features) || places.type !== "FeatureCollection" || !Array.isArray(places.features)) {
-    throw new Error("City data sources did not return valid GeoJSON FeatureCollections.");
-  }
-  cityAreaFeatures = areas.features as CityAreaFeature[];
-  populatedPlaceFeatures = places.features as PopulatedPlaceFeature[];
-  if (cityAreaFeatures.length === 0 || populatedPlaceFeatures.length === 0) throw new Error("City data source returned no features.");
-  populatedPlaceGrid = new Map<string, PopulatedPlaceFeature[]>();
-  for (const place of populatedPlaceFeatures) {
-    if (place.geometry?.type !== "Point") continue;
-    const [longitude, latitude] = place.geometry.coordinates;
-    if (typeof longitude !== "number" || typeof latitude !== "number") continue;
-    const key = placeGridKey(longitude, latitude);
-    const bucket = populatedPlaceGrid.get(key) ?? [];
-    bucket.push(place);
-    populatedPlaceGrid.set(key, bucket);
-  }
-  // Spatial index prevents comparing every urban footprint with every settlement.
-  cityRecords = cityAreaFeatures.map((feature, index) => ({ feature, ...nearestCityName(feature, index) }));
-  cityRecordsById = new Map(cityRecords.map((record) => [record.id, record] as const));
-  cityRecordByFeature = new WeakMap(cityRecords.map((record) => [record.feature, record] as const));
-  citySpatialIndex = buildSpatialIndex(cityAreaFeatures as GeoJSON.Feature<GeoJSON.Geometry>[]);
-  cityDataReady = true;
-}
-
-function nearestCityName(feature: CityAreaFeature, index: number): { id: string; name: string; country: string } {
-  const center = geoCentroid(feature);
-  let nearest: PopulatedPlaceFeature | null = null;
-  let nearestDistance = Infinity;
-  if (Number.isFinite(center[0]) && Number.isFinite(center[1])) {
-    const lonCell = Math.floor((center[0] + 180) / 5);
-    const latCell = Math.floor((center[1] + 90) / 5);
-    const lonRadius = Math.abs(center[1]) > 65 ? 6 : 3;
-    for (let dx = -lonRadius; dx <= lonRadius; dx++) {
-      for (let dy = -3; dy <= 3; dy++) {
-        const bucket = populatedPlaceGrid.get(`${lonCell + dx}:${latCell + dy}`);
-        if (!bucket) continue;
-        for (const place of bucket) {
-          if (place.geometry?.type !== "Point") continue;
-          const distance = geoDistance(center, place.geometry.coordinates as [number, number]);
-          if (distance < nearestDistance) { nearestDistance = distance; nearest = place; }
-        }
-      }
-    }
-  }
-
-  // Never discard an urban footprint just because its matching settlement point
-  // is missing or farther away. Rendering every footprint prevents an empty city
-  // layer; labels are best-effort metadata, not a condition for drawing geometry.
-  const areaProps = feature.properties ?? {};
-  const placeProps = nearest?.properties ?? {};
-  const areaName = String(areaProps.name ?? areaProps.NAME ?? "").trim();
-  const placeName = String(placeProps.name ?? placeProps.NAME ?? placeProps.nameascii ?? "").trim();
-  const useNearestPlace = Boolean(placeName && nearestDistance <= 0.08);
-  const name = useNearestPlace ? placeName : areaName || placeName || `Urban area ${index + 1}`;
-  const country = String(placeProps.adm0name ?? placeProps.ADM0NAME ?? placeProps.admin ?? placeProps.ADMIN ?? "Country unavailable");
-  return { id: `city-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, country };
+  await new Promise<void>((resolve, reject) => {
+    const worker = new Worker(new URL("./city-data-worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (event: MessageEvent<CityWorkerResult>) => {
+      worker.terminate();
+      const result = event.data;
+      if (result.type === "error") { reject(new Error(result.message)); return; }
+      cityAreaFeatures = result.areas;
+      cityRecords = result.records.map((record) => ({
+        feature: cityAreaFeatures[record.index]!,
+        id: record.id,
+        name: record.name,
+        country: record.country,
+      }));
+      cityRecordsById = new Map(cityRecords.map((record) => [record.id, record] as const));
+      cityRecordByFeature = new WeakMap(cityRecords.map((record) => [record.feature, record] as const));
+      citySpatialIndex = {
+        cells: new Map(result.indexCells.map(([key, indices]) => [key, indices.map((index) => cityAreaFeatures[index]!).filter(Boolean)] as const)),
+        global: result.globalIndices.map((index) => cityAreaFeatures[index]!).filter(Boolean),
+      };
+      cityDataReady = true;
+      resolve();
+    };
+    worker.onerror = () => {
+      worker.terminate();
+      reject(new Error("The city-data worker failed before returning its geometry."));
+    };
+    worker.postMessage({ areasUrl: CITY_AREAS_GEOJSON_URL, placesUrl: POPULATED_PLACES_GEOJSON_URL });
+  });
 }
 
 async function loadLakeGeometry(): Promise<void> {
