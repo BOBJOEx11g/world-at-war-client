@@ -58,10 +58,10 @@ function collectPolygon(rings: Position[][], project: Projection, output: Geomet
       if (point && Number.isFinite(point[0]) && Number.isFinite(point[1])) points.push(point);
     }
     if (points.length < 3) continue;
-    const ring = simplifyRing(points, tolerance);
+    const simplifiedRing = simplifyRing(points, tolerance);
     if (projectedRings.length) holes.push(flat.length / 2);
-    projectedRings.push(ring);
-    for (const [x, y] of ring) flat.push(x, y);
+    projectedRings.push(simplifiedRing);
+    for (const [x, y] of simplifiedRing) flat.push(x, y);
   }
   if (!projectedRings.length) return;
   for (const index of earcut(flat, holes, 2)) output.fill.push(flat[index * 2]!, flat[index * 2 + 1]!);
