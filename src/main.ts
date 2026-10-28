@@ -578,9 +578,21 @@ mapInput.addEventListener("wheel", (event: WheelEvent) => {
   zoomAt(event.clientX - bounds.left, event.clientY - bounds.top, event.deltaY < 0 ? 1.12 : 1 / 1.12);
 }, { passive: false });
 
+const activeTouchPointers = new Map<number, { x: number; y: number }>();
+
 mapInput.addEventListener("pointerdown", (event: PointerEvent) => {
-  if (event.button !== 0) return;
-  suppressNextClick = false;
+  if (event.pointerType === "touch") {
+    activeTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    suppressNextClick = false;
+    if (activeTouchPointers.size >= 2) {
+      // A second finger switches from panning to pinch-zooming without page scrolling.
+      isPanning = false;
+      didPan = true;
+      suppressNextClick = true;
+    }
+  }
+  if (event.button !== 0 && event.pointerType !== "touch") return;
+  if (activeTouchPointers.size >= 2) return;
   isPanning = true;
   didPan = false;
   pointerStartX = event.clientX;
@@ -590,6 +602,33 @@ mapInput.addEventListener("pointerdown", (event: PointerEvent) => {
 });
 
 window.addEventListener("pointermove", (event: PointerEvent) => {
+  if (event.pointerType === "touch" && activeTouchPointers.has(event.pointerId)) {
+    const previous = activeTouchPointers.get(event.pointerId)!;
+    activeTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (activeTouchPointers.size >= 2) {
+      const points = [...activeTouchPointers.values()];
+      const first = points[0]!;
+      const second = points[1]!;
+      const oldDistance = Math.hypot(previous.x - second.x, previous.y - second.y);
+      const newDistance = Math.hypot(first.x - second.x, first.y - second.y);
+      // Recalculate the previous distance from the other finger's last position
+      // when this pointer moved, so pinch zoom remains stable and focal-point anchored.
+      const priorFirst = { x: previous.x, y: previous.y };
+      const priorSecond = second;
+      const distanceBefore = Math.max(1, Math.hypot(priorFirst.x - priorSecond.x, priorFirst.y - priorSecond.y));
+      const distanceAfter = Math.max(1, newDistance);
+      const bounds = mapInput.getBoundingClientRect();
+      const midpointX = (first.x + second.x) / 2 - bounds.left;
+      const midpointY = (first.y + second.y) / 2 - bounds.top;
+      if (Number.isFinite(distanceBefore / distanceAfter) && oldDistance >= 0) {
+        zoomAt(midpointX, midpointY, distanceAfter / distanceBefore);
+      }
+      isPanning = false;
+      didPan = true;
+      suppressNextClick = true;
+      return;
+    }
+  }
   if (!isPanning) return;
   const dx = event.clientX - pointerStartX;
   const dy = event.clientY - pointerStartY;
@@ -600,8 +639,21 @@ window.addEventListener("pointermove", (event: PointerEvent) => {
   applyViewTransform(false);
 });
 
-function finishPan(): void {
-  if (!isPanning) return;
+function finishPan(event: PointerEvent): void {
+  if (event.pointerType === "touch") activeTouchPointers.delete(event.pointerId);
+  if (!isPanning) {
+    if (activeTouchPointers.size === 1) {
+      const remaining = [...activeTouchPointers.entries()][0]!;
+      pointerStartX = remaining[1].x;
+      pointerStartY = remaining[1].y;
+      panStartX = panX;
+      panStartY = panY;
+      isPanning = true;
+      didPan = true;
+    }
+    suppressNextClick = true;
+    return;
+  }
   isPanning = false;
   if (didPan) suppressNextClick = true;
 }
