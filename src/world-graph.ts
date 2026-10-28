@@ -6,6 +6,7 @@ export type GraphCity = {
   id: string;
   name: string;
   country: string;
+  isCapital?: boolean;
   feature: Feature<Geometry, { [key: string]: unknown }>;
 };
 
@@ -160,7 +161,7 @@ export function buildStrategicGraph(
         longitude: center[0],
         latitude: center[1],
         provinceId: id,
-        isCapital: false,
+        isCapital: coveringCity.isCapital ?? false,
       };
       nodes.push(node);
       nodeById.set(node.id, node);
@@ -224,7 +225,7 @@ export function buildStrategicGraph(
       longitude: center[0],
       latitude: center[1],
       provinceId: parentId,
-      isCapital: false,
+      isCapital: city.isCapital ?? false,
     };
     nodes.push(node);
     nodeById.set(node.id, node);
