@@ -459,7 +459,10 @@ function selectProvince(id: string): void {
 }
 
 function rebuildStrategicGraph(): void {
-  if (!administrativeDataReady || !cityDataReady || strategicGraph) return;
+  // The strategic graph is optional visualization data. Do not build it during
+  // startup unless the player enables nodes or paths; its global edge analysis
+  // is expensive on low-end CPUs and is not needed for the base map.
+  if ((!nodesModeEnabled && !pathsModeEnabled) || !administrativeDataReady || !cityDataReady || strategicGraph) return;
   try {
     strategicGraph = buildStrategicGraph(allAdministrativeFeatures, cityRecords.map((record) => ({
       id: record.id,
@@ -593,6 +596,7 @@ nodesToggle.addEventListener("click", () => {
   nodesToggle.textContent = nodesModeEnabled ? "NODES: ON" : "NODES: OFF";
   nodesToggle.setAttribute("aria-pressed", String(nodesModeEnabled));
   nodesToggle.classList.toggle("is-active", nodesModeEnabled);
+  rebuildStrategicGraph();
   drawStrategicGraph();
 });
 pathsToggle.addEventListener("click", () => {
@@ -600,6 +604,7 @@ pathsToggle.addEventListener("click", () => {
   pathsToggle.textContent = pathsModeEnabled ? "PATHS: ON" : "PATHS: OFF";
   pathsToggle.setAttribute("aria-pressed", String(pathsModeEnabled));
   pathsToggle.classList.toggle("is-active", pathsModeEnabled);
+  rebuildStrategicGraph();
   drawStrategicGraph();
 });
 
