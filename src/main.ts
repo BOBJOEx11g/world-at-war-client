@@ -210,7 +210,7 @@ async function loadCityGeometry(): Promise<void> {
       worker.terminate();
       const result = event.data;
       if (result.type === "error") { reject(new Error(result.message)); return; }
-      cityAreaFeatures = result.areas;
+      cityAreaFeatures = result.areas as CityAreaFeature[];
       cityRecords = result.records.map((record) => ({
         feature: cityAreaFeatures[record.index]!,
         id: record.id,
