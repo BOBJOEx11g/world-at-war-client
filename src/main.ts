@@ -200,7 +200,7 @@ let strategicGraph: StrategicGraph | null = null;
 // Cached land mask for the strategic graph. It prevents graph links from being
 // drawn over oceans and mapped lakes without rebuilding the mask on every pan.
 let strategicLandClip: Path2D | null = null;
-let strategicLandClipProjection: typeof mapProjection = null;
+let strategicLandClipProjection: ReturnType<typeof geoNaturalEarth1> | null = null;
 let strategicLandClipCountries: CountryFeature[] | null = null;
 let strategicLandClipLakes: LakeFeature[] | null = null;
 let nodesModeEnabled = false;
