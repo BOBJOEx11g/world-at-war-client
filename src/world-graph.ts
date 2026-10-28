@@ -87,6 +87,73 @@ function cityFullyCoversProvince(city: GraphCity, province: AdministrativeFeatur
   }
 }
 
+/** Return a representative coordinate that is inside the land geometry. */
+function interiorCoordinate(feature: Feature<Geometry, { [key: string]: unknown }>): [number, number] {
+  const centroid = geoCentroid(feature) as [number, number];
+  if (centroid.every(Number.isFinite) && geoContains(feature, centroid)) return centroid;
+
+  const components: Geometry[] = [];
+  const collectPolygons = (geometry: Geometry | null): void => {
+    if (!geometry) return;
+    if (geometry.type === "Polygon") components.push(geometry);
+    else if (geometry.type === "MultiPolygon") {
+      for (const coordinates of geometry.coordinates) components.push({ type: "Polygon", coordinates });
+    } else if (geometry.type === "GeometryCollection") {
+      for (const child of geometry.geometries) collectPolygons(child);
+    }
+  };
+  collectPolygons(feature.geometry);
+
+  // A multi-island province can have its overall centroid in the sea. Check
+  // individual land components first, largest bounding box first.
+  const candidates = components.map((geometry) => {
+    const component = { type: "Feature" as const, properties: feature.properties, geometry };
+    const bounds = geoBounds(component) as [[number, number], [number, number]];
+    return { component, bounds, area: Math.abs((bounds[1][0] - bounds[0][0]) * (bounds[1][1] - bounds[0][1])) };
+  }).sort((a, b) => b.area - a.area);
+
+  for (const { component, bounds } of candidates) {
+    const center = geoCentroid(component) as [number, number];
+    if (center.every(Number.isFinite) && geoContains(component, center)) return center;
+
+    const [[west, south], [east, north]] = bounds;
+    // Grid sampling catches irregular/concave land shapes whose centroid falls outside.
+    for (let divisions = 4; divisions <= 20; divisions += 4) {
+      for (let y = 1; y < divisions; y++) for (let x = 1; x < divisions; x++) {
+        const point: [number, number] = [
+          west + (east - west) * x / divisions,
+          south + (north - south) * y / divisions,
+        ];
+        if (geoContains(component, point)) return point;
+      }
+    }
+
+    // Tiny islands may fall between grid samples; probe from ring edges toward
+    // the component centroid until an interior point is found.
+    for (const ring of geometryRings(component.geometry)) {
+      for (let i = 0; i < ring.length - 1; i++) {
+        const a = ring[i]!, b = ring[i + 1]!;
+        if (typeof a[0] !== "number" || typeof a[1] !== "number" ||
+            typeof b[0] !== "number" || typeof b[1] !== "number") continue;
+        const midpoint: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        for (const fraction of [0.05, 0.1, 0.2, 0.35, 0.5, 0.7, 0.9]) {
+          const point: [number, number] = [
+            midpoint[0] + (center[0] - midpoint[0]) * fraction,
+            midpoint[1] + (center[1] - midpoint[1]) * fraction,
+          ];
+          if (geoContains(component, point)) return point;
+        }
+      }
+    }
+  }
+
+  // Last resort for malformed geometry: use the first finite source coordinate.
+  const first = geometryRings(feature.geometry).flat().find((point) =>
+    typeof point[0] === "number" && typeof point[1] === "number" &&
+    Number.isFinite(point[0]) && Number.isFinite(point[1]));
+  return first ? [first[0], first[1]] : centroid;
+}
+
 function edgeKey(a: Position, b: Position): string {
   const pointKey = (p: Position) => `${Number(p[0]).toFixed(5)},${Number(p[1]).toFixed(5)}`;
   const left = pointKey(a), right = pointKey(b);
@@ -155,7 +222,7 @@ export function buildStrategicGraph(
     const id = provinceId(province);
     const coveringCity = coveringCityByProvince.get(id);
     if (coveringCity) {
-      const center = geoCentroid(coveringCity.feature);
+      const center = interiorCoordinate(coveringCity.feature);
       const node: StrategicNode = {
         id: `city:${coveringCity.id}`,
         kind: "city",
@@ -171,7 +238,7 @@ export function buildStrategicGraph(
       provinceNodeIds.set(id, node.id);
       continue;
     }
-    const center = geoCentroid(province);
+    const center = interiorCoordinate(province);
     const node: StrategicNode = {
       id: `province:${id}`,
       kind: "province",
@@ -212,7 +279,7 @@ export function buildStrategicGraph(
   // Urban nodes remain separate only when they do not replace an entire province.
   for (const city of cities) {
     if (replacedProvinceByCityId.has(city.id)) continue;
-    const center = geoCentroid(city.feature);
+    const center = interiorCoordinate(city.feature);
     if (!Number.isFinite(center[0]) || !Number.isFinite(center[1])) continue;
     const candidates = [...(provinceGrid.get(cellKey(center[0], center[1])) ?? []), ...globalProvinces];
     const parent = candidates.find((province) => {
