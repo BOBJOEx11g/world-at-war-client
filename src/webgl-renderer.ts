@@ -9,6 +9,35 @@ type GeometryArrays = { fill: number[]; borders: number[] };
 type BoundaryArrays = { borders: number[] };
 type BiomeBatch = { buffer: WebGLBuffer; count: number; color: Rgba };
 
+function simplifyRing(points: ProjectedPoint[], tolerance: number): ProjectedPoint[] {
+  if (tolerance <= 0 || points.length < 5) return points;
+  let twiceArea = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i]!, b = points[(i + 1) % points.length]!;
+    twiceArea += a[0] * b[1] - b[0] * a[1];
+  }
+  // Preserve tiny islands and small polygon features even when they are sub-pixel.
+  if (Math.abs(twiceArea) / 2 < 1.25) return points;
+  const first = points[0]!;
+  const last = points[points.length - 1]!;
+  const closed = Math.hypot(first[0] - last[0], first[1] - last[1]) < 0.001;
+  const source = closed ? points.slice(0, -1) : points;
+  if (source.length < 4) return points;
+  const simplified: ProjectedPoint[] = [source[0]!];
+  let previous = source[0]!;
+  const thresholdSquared = tolerance * tolerance;
+  for (let i = 1; i < source.length - 1; i++) {
+    const point = source[i]!;
+    const dx = point[0] - previous[0], dy = point[1] - previous[1];
+    if (dx * dx + dy * dy >= thresholdSquared) {
+      simplified.push(point);
+      previous = point;
+    }
+  }
+  simplified.push(source[source.length - 1]!);
+  return simplified.length >= 3 ? simplified : points;
+}
+
 function appendRingSegments(points: ProjectedPoint[], output: number[]): void {
   if (points.length < 2) return;
   for (let i = 0; i < points.length; i++) {
@@ -18,7 +47,7 @@ function appendRingSegments(points: ProjectedPoint[], output: number[]): void {
   }
 }
 
-function collectPolygon(rings: Position[][], project: Projection, output: GeometryArrays): void {
+function collectPolygon(rings: Position[][], project: Projection, output: GeometryArrays, tolerance = 0): void {
   const flat: number[] = [];
   const holes: number[] = [];
   const projectedRings: ProjectedPoint[][] = [];
@@ -29,41 +58,42 @@ function collectPolygon(rings: Position[][], project: Projection, output: Geomet
       if (point && Number.isFinite(point[0]) && Number.isFinite(point[1])) points.push(point);
     }
     if (points.length < 3) continue;
+    const ring = simplifyRing(points, tolerance);
     if (projectedRings.length) holes.push(flat.length / 2);
-    projectedRings.push(points);
-    for (const [x, y] of points) flat.push(x, y);
+    projectedRings.push(ring);
+    for (const [x, y] of ring) flat.push(x, y);
   }
   if (!projectedRings.length) return;
   for (const index of earcut(flat, holes, 2)) output.fill.push(flat[index * 2]!, flat[index * 2 + 1]!);
   for (const ring of projectedRings) appendRingSegments(ring, output.borders);
 }
 
-function collectBoundaryPolygon(rings: Position[][], project: Projection, output: BoundaryArrays): void {
+function collectBoundaryPolygon(rings: Position[][], project: Projection, output: BoundaryArrays, tolerance = 0): void {
   for (const ring of rings) {
     const points: ProjectedPoint[] = [];
     for (const coordinate of ring) {
       const point = project(coordinate);
       if (point && Number.isFinite(point[0]) && Number.isFinite(point[1])) points.push(point);
     }
-    appendRingSegments(points, output.borders);
+    appendRingSegments(simplifyRing(points, tolerance), output.borders);
   }
 }
 
-function collectBoundaryGeometry(geometry: Geometry | null, project: Projection, output: BoundaryArrays): void {
+function collectBoundaryGeometry(geometry: Geometry | null, project: Projection, output: BoundaryArrays, tolerance = 0): void {
   if (!geometry) return;
   switch (geometry.type) {
-    case "Polygon": collectBoundaryPolygon(geometry.coordinates, project, output); break;
-    case "MultiPolygon": for (const polygon of geometry.coordinates) collectBoundaryPolygon(polygon, project, output); break;
-    case "GeometryCollection": for (const child of geometry.geometries) collectBoundaryGeometry(child, project, output); break;
+    case "Polygon": collectBoundaryPolygon(geometry.coordinates, project, output, tolerance); break;
+    case "MultiPolygon": for (const polygon of geometry.coordinates) collectBoundaryPolygon(polygon, project, output, tolerance); break;
+    case "GeometryCollection": for (const child of geometry.geometries) collectBoundaryGeometry(child, project, output, tolerance); break;
   }
 }
 
-function collectGeometry(geometry: Geometry | null, project: Projection, output: GeometryArrays): void {
+function collectGeometry(geometry: Geometry | null, project: Projection, output: GeometryArrays, tolerance = 0): void {
   if (!geometry) return;
   switch (geometry.type) {
-    case "Polygon": collectPolygon(geometry.coordinates, project, output); break;
-    case "MultiPolygon": for (const polygon of geometry.coordinates) collectPolygon(polygon, project, output); break;
-    case "GeometryCollection": for (const child of geometry.geometries) collectGeometry(child, project, output); break;
+    case "Polygon": collectPolygon(geometry.coordinates, project, output, tolerance); break;
+    case "MultiPolygon": for (const polygon of geometry.coordinates) collectPolygon(polygon, project, output, tolerance); break;
+    case "GeometryCollection": for (const child of geometry.geometries) collectGeometry(child, project, output, tolerance); break;
   }
 }
 
@@ -113,18 +143,26 @@ export class WebGLMapRenderer {
   private readonly scale: WebGLUniformLocation;
   private readonly color: WebGLUniformLocation;
   private readonly fillBuffer: WebGLBuffer;
+  private readonly lowFillBuffer: WebGLBuffer;
   private readonly borderBuffer: WebGLBuffer;
+  private readonly lowBorderBuffer: WebGLBuffer;
   private readonly administrativeBuffer: WebGLBuffer;
+  private readonly lowAdministrativeBuffer: WebGLBuffer;
   private readonly lakeBuffer: WebGLBuffer;
+  private readonly lowLakeBuffer: WebGLBuffer;
   private readonly cityBuffer: WebGLBuffer;
   private readonly cityBorderBuffer: WebGLBuffer;
   private readonly selectionFillBuffer: WebGLBuffer;
   private readonly selectionBorderBuffer: WebGLBuffer;
   private readonly biomeBatches = new Map<string, BiomeBatch>();
   private fillCount = 0;
+  private lowFillCount = 0;
   private borderCount = 0;
+  private lowBorderCount = 0;
   private administrativeCount = 0;
+  private lowAdministrativeCount = 0;
   private lakeVertexCount = 0;
+  private lowLakeVertexCount = 0;
   private cityVertexCount = 0;
   private cityBorderCount = 0;
   private selectionFillCount = 0;
@@ -156,14 +194,18 @@ export class WebGLMapRenderer {
     this.scale = gl.getUniformLocation(program, "u_scale")!;
     this.color = gl.getUniformLocation(program, "u_color")!;
     this.fillBuffer = gl.createBuffer()!;
+    this.lowFillBuffer = gl.createBuffer()!;
     this.borderBuffer = gl.createBuffer()!;
+    this.lowBorderBuffer = gl.createBuffer()!;
     this.administrativeBuffer = gl.createBuffer()!;
+    this.lowAdministrativeBuffer = gl.createBuffer()!;
     this.lakeBuffer = gl.createBuffer()!;
+    this.lowLakeBuffer = gl.createBuffer()!;
     this.cityBuffer = gl.createBuffer()!;
     this.cityBorderBuffer = gl.createBuffer()!;
     this.selectionFillBuffer = gl.createBuffer()!;
     this.selectionBorderBuffer = gl.createBuffer()!;
-    if (![this.fillBuffer, this.borderBuffer, this.administrativeBuffer, this.lakeBuffer, this.cityBuffer, this.cityBorderBuffer, this.selectionFillBuffer, this.selectionBorderBuffer].every(Boolean)) {
+    if (![this.fillBuffer, this.lowFillBuffer, this.borderBuffer, this.lowBorderBuffer, this.administrativeBuffer, this.lowAdministrativeBuffer, this.lakeBuffer, this.lowLakeBuffer, this.cityBuffer, this.cityBorderBuffer, this.selectionFillBuffer, this.selectionBorderBuffer].every(Boolean)) {
       throw new Error("Unable to allocate WebGL geometry buffers.");
     }
     gl.enable(gl.BLEND);
@@ -173,21 +215,37 @@ export class WebGLMapRenderer {
 
   setGeometry(features: Feature<Geometry>[], project: Projection): void {
     const arrays: GeometryArrays = { fill: [], borders: [] };
-    for (const feature of features) collectGeometry(feature.geometry, project, arrays);
+    const low: GeometryArrays = { fill: [], borders: [] };
+    for (const feature of features) {
+      collectGeometry(feature.geometry, project, arrays);
+      collectGeometry(feature.geometry, project, low, 0.65);
+    }
     this.fillCount = uploadBuffer(this.gl, this.fillBuffer, arrays.fill);
     this.borderCount = uploadBuffer(this.gl, this.borderBuffer, arrays.borders);
+    this.lowFillCount = uploadBuffer(this.gl, this.lowFillBuffer, low.fill);
+    this.lowBorderCount = uploadBuffer(this.gl, this.lowBorderBuffer, low.borders);
   }
 
   setAdministrativeGeometry(features: Feature<Geometry>[], project: Projection): void {
     const arrays: BoundaryArrays = { borders: [] };
-    for (const feature of features) collectBoundaryGeometry(feature.geometry, project, arrays);
+    const low: BoundaryArrays = { borders: [] };
+    for (const feature of features) {
+      collectBoundaryGeometry(feature.geometry, project, arrays);
+      collectBoundaryGeometry(feature.geometry, project, low, 0.65);
+    }
     this.administrativeCount = uploadBuffer(this.gl, this.administrativeBuffer, arrays.borders);
+    this.lowAdministrativeCount = uploadBuffer(this.gl, this.lowAdministrativeBuffer, low.borders);
   }
 
   setLakeGeometry(features: Feature<Geometry>[], project: Projection): void {
     const arrays: GeometryArrays = { fill: [], borders: [] };
-    for (const feature of features) collectGeometry(feature.geometry, project, arrays);
+    const low: GeometryArrays = { fill: [], borders: [] };
+    for (const feature of features) {
+      collectGeometry(feature.geometry, project, arrays);
+      collectGeometry(feature.geometry, project, low, 0.65);
+    }
     this.lakeVertexCount = uploadBuffer(this.gl, this.lakeBuffer, arrays.fill);
+    this.lowLakeVertexCount = uploadBuffer(this.gl, this.lowLakeBuffer, low.fill);
   }
 
   setCityGeometry(features: Feature<Geometry>[], project: Projection): void {
@@ -258,11 +316,12 @@ export class WebGLMapRenderer {
       gl.drawArrays(mode, 0, count);
     };
 
-    draw(this.fillBuffer, this.fillCount, gl.TRIANGLES, [0.91, 0.86, 0.73, 1]);
+    const detailed = zoom >= 2;
+    draw(detailed ? this.fillBuffer : this.lowFillBuffer, detailed ? this.fillCount : this.lowFillCount, gl.TRIANGLES, [0.91, 0.86, 0.73, 1]);
     for (const batch of this.biomeBatches.values()) draw(batch.buffer, batch.count, gl.TRIANGLES, batch.color);
-    draw(this.lakeBuffer, this.lakeVertexCount, gl.TRIANGLES, [0.14, 0.35, 0.44, 1]);
-    draw(this.borderBuffer, this.borderCount, gl.LINES, [0.09, 0.09, 0.07, 1]);
-    draw(this.administrativeBuffer, this.administrativeCount, gl.LINES, [0.52, 0.51, 0.47, 0.96]);
+    draw(detailed ? this.lakeBuffer : this.lowLakeBuffer, detailed ? this.lakeVertexCount : this.lowLakeVertexCount, gl.TRIANGLES, [0.14, 0.35, 0.44, 1]);
+    draw(detailed ? this.borderBuffer : this.lowBorderBuffer, detailed ? this.borderCount : this.lowBorderCount, gl.LINES, [0.09, 0.09, 0.07, 1]);
+    draw(detailed ? this.administrativeBuffer : this.lowAdministrativeBuffer, detailed ? this.administrativeCount : this.lowAdministrativeCount, gl.LINES, [0.52, 0.51, 0.47, 0.96]);
     if (zoom >= 2) {
       draw(this.cityBuffer, this.cityVertexCount, gl.TRIANGLES, [0.65, 0.48, 0.31, 0.72]);
       draw(this.cityBorderBuffer, this.cityBorderCount, gl.LINES, [0.96, 0.90, 0.73, 0.95]);
@@ -272,7 +331,7 @@ export class WebGLMapRenderer {
   }
 
   destroy(): void {
-    for (const buffer of [this.fillBuffer, this.borderBuffer, this.administrativeBuffer, this.lakeBuffer, this.cityBuffer, this.cityBorderBuffer, this.selectionFillBuffer, this.selectionBorderBuffer]) this.gl.deleteBuffer(buffer);
+    for (const buffer of [this.fillBuffer, this.lowFillBuffer, this.borderBuffer, this.lowBorderBuffer, this.administrativeBuffer, this.lowAdministrativeBuffer, this.lakeBuffer, this.lowLakeBuffer, this.cityBuffer, this.cityBorderBuffer, this.selectionFillBuffer, this.selectionBorderBuffer]) this.gl.deleteBuffer(buffer);
     for (const batch of this.biomeBatches.values()) this.gl.deleteBuffer(batch.buffer);
     this.biomeBatches.clear();
     this.gl.deleteProgram(this.program);
