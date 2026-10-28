@@ -80,7 +80,7 @@ app.innerHTML = `
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
       <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="toggle-biomes" aria-pressed="false">BIOMES: OFF</button><button id="reset-view">RESET VIEW</button></div></div>
-      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><canvas id="world-map-webgl" aria-hidden="true"></canvas><svg id="world-map" role="img" aria-label="Interactive map of state and province polygons across the world"></svg><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
+      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><canvas id="world-map-webgl" aria-hidden="true"></canvas><div id="map-input-layer" role="application" aria-label="Interactive world map. Use the mouse or touch to pan and zoom, and click a territory to select it." tabindex="0"></div><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
       <div class="map-footer"><span id="map-status">Loading country geometry…</span><span>SCENARIO DATA: 2026 <i>·</i> MAP DATA: PROVISIONAL</span></div>
     </section>
   </main>
@@ -88,7 +88,7 @@ app.innerHTML = `
 `;
 
 const mapWrap = document.querySelector<HTMLDivElement>("#map-wrap")!;
-const svg = document.querySelector<SVGSVGElement>("#world-map")!;
+const mapInput = document.querySelector<HTMLDivElement>("#map-input-layer")!;
 const webglCanvas = document.querySelector<HTMLCanvasElement>("#world-map-webgl")!;
 let webglRenderer: WebGLMapRenderer | null = null;
 let webglFailed = false;
@@ -363,10 +363,7 @@ function renderMap(): void {
   viewHeight = Math.max(1, Math.floor(bounds.height));
   if (viewWidth <= 1 || viewHeight <= 1 || countryCollection.features.length === 0) return;
 
-  svg.setAttribute("viewBox", `0 0 ${viewWidth} ${viewHeight}`);
-  // The SVG is now only a lightweight input/accessibility surface. All map pixels
-  // (countries, provinces, lakes, cities, biome fills and selection) are rendered by WebGL.
-  svg.replaceChildren();
+  // All map pixels are rendered by WebGL; this HTML layer only receives input.
   const projection = geoNaturalEarth1()
     .fitExtent([[18, 24], [Math.max(19, viewWidth - 18), Math.max(25, viewHeight - 28)]], countryCollection);
   mapProjection = projection;
@@ -580,9 +577,9 @@ document.querySelector("#reset-view")?.addEventListener("click", () => {
   applyViewTransform();
 });
 
-svg.addEventListener("click", (event: MouseEvent) => {
+mapInput.addEventListener("click", (event: MouseEvent) => {
   if (suppressNextClick || !mapProjection) return;
-  const bounds = svg.getBoundingClientRect();
+  const bounds = mapInput.getBoundingClientRect();
   const longitudeLatitude = mapProjection.invert([
     (event.clientX - bounds.left - panX) / zoomScale,
     (event.clientY - bounds.top - panY) / zoomScale,
@@ -613,13 +610,13 @@ svg.addEventListener("click", (event: MouseEvent) => {
   }
 }, false);
 
-svg.addEventListener("wheel", (event: WheelEvent) => {
+mapInput.addEventListener("wheel", (event: WheelEvent) => {
   event.preventDefault();
-  const bounds = svg.getBoundingClientRect();
+  const bounds = mapInput.getBoundingClientRect();
   zoomAt(event.clientX - bounds.left, event.clientY - bounds.top, event.deltaY < 0 ? 1.12 : 1 / 1.12);
 }, { passive: false });
 
-svg.addEventListener("pointerdown", (event: PointerEvent) => {
+mapInput.addEventListener("pointerdown", (event: PointerEvent) => {
   if (event.button !== 0) return;
   suppressNextClick = false;
   isPanning = true;
@@ -649,7 +646,7 @@ function finishPan(): void {
 
 window.addEventListener("pointerup", finishPan);
 window.addEventListener("pointercancel", finishPan);
-svg.addEventListener("click", (event: MouseEvent) => {
+mapInput.addEventListener("click", (event: MouseEvent) => {
   if (!suppressNextClick) return;
   suppressNextClick = false;
   event.preventDefault();
