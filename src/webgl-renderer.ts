@@ -38,16 +38,35 @@ function simplifyRing(points: ProjectedPoint[], tolerance: number): ProjectedPoi
   return simplified.length >= 3 ? simplified : points;
 }
 
-function appendRingSegments(points: ProjectedPoint[], output: number[]): void {
+function appendRingSegments(points: ProjectedPoint[], output: number[], thickness = 1): void {
   if (points.length < 2) return;
+  const half = thickness / 2;
   for (let i = 0; i < points.length; i++) {
     const a = points[i]!;
     const b = points[(i + 1) % points.length]!;
-    output.push(a[0], a[1], b[0], b[1]);
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const length = Math.hypot(dx, dy);
+    if (length < 0.001) continue;
+    const nx = (-dy / length) * half, ny = (dx / length) * half;
+    // Six vertices per segment; offset remains in screen pixels as zoom changes.
+    output.push(
+      a[0], a[1], nx, ny,
+      a[0], a[1], -nx, -ny,
+      b[0], b[1], nx, ny,
+      b[0], b[1], nx, ny,
+      a[0], a[1], -nx, -ny,
+      b[0], b[1], -nx, -ny,
+    );
   }
 }
 
-function collectPolygon(rings: Position[][], project: Projection, output: GeometryArrays, tolerance = 0): void {
+function uploadBorderBuffer(gl: WebGLRenderingContext, buffer: WebGLBuffer, values: number[]): number {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
+  return values.length / 4;
+}
+
+function collectPolygon(rings: Position[][], project: Projection, output: GeometryArrays, tolerance = 0, borderThickness = 1): void {
   const flat: number[] = [];
   const holes: number[] = [];
   const projectedRings: ProjectedPoint[][] = [];
@@ -65,35 +84,35 @@ function collectPolygon(rings: Position[][], project: Projection, output: Geomet
   }
   if (!projectedRings.length) return;
   for (const index of earcut(flat, holes, 2)) output.fill.push(flat[index * 2]!, flat[index * 2 + 1]!);
-  for (const ring of projectedRings) appendRingSegments(ring, output.borders);
+  for (const ring of projectedRings) appendRingSegments(ring, output.borders, borderThickness);
 }
 
-function collectBoundaryPolygon(rings: Position[][], project: Projection, output: BoundaryArrays, tolerance = 0): void {
+function collectBoundaryPolygon(rings: Position[][], project: Projection, output: BoundaryArrays, tolerance = 0, borderThickness = 1): void {
   for (const ring of rings) {
     const points: ProjectedPoint[] = [];
     for (const coordinate of ring) {
       const point = project(coordinate);
       if (point && Number.isFinite(point[0]) && Number.isFinite(point[1])) points.push(point);
     }
-    appendRingSegments(simplifyRing(points, tolerance), output.borders);
+    appendRingSegments(simplifyRing(points, tolerance), output.borders, borderThickness);
   }
 }
 
-function collectBoundaryGeometry(geometry: Geometry | null, project: Projection, output: BoundaryArrays, tolerance = 0): void {
+function collectBoundaryGeometry(geometry: Geometry | null, project: Projection, output: BoundaryArrays, tolerance = 0, borderThickness = 1): void {
   if (!geometry) return;
   switch (geometry.type) {
-    case "Polygon": collectBoundaryPolygon(geometry.coordinates, project, output, tolerance); break;
-    case "MultiPolygon": for (const polygon of geometry.coordinates) collectBoundaryPolygon(polygon, project, output, tolerance); break;
-    case "GeometryCollection": for (const child of geometry.geometries) collectBoundaryGeometry(child, project, output, tolerance); break;
+    case "Polygon": collectBoundaryPolygon(geometry.coordinates, project, output, tolerance, borderThickness); break;
+    case "MultiPolygon": for (const polygon of geometry.coordinates) collectBoundaryPolygon(polygon, project, output, tolerance, borderThickness); break;
+    case "GeometryCollection": for (const child of geometry.geometries) collectBoundaryGeometry(child, project, output, tolerance, borderThickness); break;
   }
 }
 
-function collectGeometry(geometry: Geometry | null, project: Projection, output: GeometryArrays, tolerance = 0): void {
+function collectGeometry(geometry: Geometry | null, project: Projection, output: GeometryArrays, tolerance = 0, borderThickness = 1): void {
   if (!geometry) return;
   switch (geometry.type) {
-    case "Polygon": collectPolygon(geometry.coordinates, project, output, tolerance); break;
-    case "MultiPolygon": for (const polygon of geometry.coordinates) collectPolygon(polygon, project, output, tolerance); break;
-    case "GeometryCollection": for (const child of geometry.geometries) collectGeometry(child, project, output, tolerance); break;
+    case "Polygon": collectPolygon(geometry.coordinates, project, output, tolerance, borderThickness); break;
+    case "MultiPolygon": for (const polygon of geometry.coordinates) collectPolygon(polygon, project, output, tolerance, borderThickness); break;
+    case "GeometryCollection": for (const child of geometry.geometries) collectGeometry(child, project, output, tolerance, borderThickness); break;
   }
 }
 
