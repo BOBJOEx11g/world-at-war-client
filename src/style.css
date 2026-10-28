@@ -115,11 +115,6 @@ dialog p { color: #716958; font-size: 13px; line-height: 1.6; }
 .biome-note { margin: 0 0 20px; color: #c5d0d7; font-size: 10px; line-height: 1.55; }
 
 
-.admin-shape { fill: #c9b994; fill-opacity: .035; stroke: #85847e; stroke-opacity: .96; stroke-width: .8; vector-effect: non-scaling-stroke; cursor: pointer; outline: none; }
-.admin-shape:hover, .admin-shape:focus-visible { fill: #b9aa86; fill-opacity: .18; stroke: #4d493f; stroke-opacity: 1; stroke-width: 1.35; }
-.admin-shape.selected { fill: #b9a16c; fill-opacity: .28; stroke: #302c24; stroke-opacity: 1; stroke-width: 1.6; }
-
-
 /* Optional biome display mode: colours and light hatching remain beneath province hitboxes. */
 .map-actions button#toggle-biomes { color: #514838; border-color: #9a9079; }
 .map-actions button#toggle-biomes.is-active { color: #342f27; background: #c7d0b0; border-color: #78866a; }
