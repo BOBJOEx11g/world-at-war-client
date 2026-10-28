@@ -396,7 +396,7 @@ export class WebGLMapRenderer {
     drawFill(detailed ? this.lakeBuffer : this.lowLakeBuffer, detailed ? this.lakeVertexCount : this.lowLakeVertexCount, [0.14, 0.35, 0.44, 1]);
     drawBorder(detailed ? this.borderBuffer : this.lowBorderBuffer, detailed ? this.borderCount : this.lowBorderCount, [0.09, 0.09, 0.07, 1]);
     drawBorder(detailed ? this.administrativeBuffer : this.lowAdministrativeBuffer, detailed ? this.administrativeCount : this.lowAdministrativeCount, [0.52, 0.51, 0.47, 0.96]);
-    if (zoom >= 2) {
+    if (zoom >= 4) {
       drawFill(this.cityBuffer, this.cityVertexCount, [0.65, 0.48, 0.31, 0.72]);
       drawBorder(this.cityBorderBuffer, this.cityBorderCount, [0.96, 0.90, 0.73, 0.95]);
     }
