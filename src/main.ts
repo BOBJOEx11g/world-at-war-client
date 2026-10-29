@@ -89,7 +89,7 @@ app.innerHTML = `
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
-      <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="toggle-biomes" aria-pressed="false">BIOMES: OFF</button><button id="toggle-nodes" aria-pressed="false">NODES: OFF</button><button id="toggle-paths" aria-pressed="false">PATHS: OFF</button><button id="reset-view">RESET VIEW</button></div></div>
+      <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="toggle-biomes" aria-pressed="false">BIOMES: OFF</button><button id="toggle-nodes" class="is-active" aria-pressed="true">NODES: ON</button><button id="toggle-paths" class="is-active" aria-pressed="true">PATHS: ON</button><button id="reset-view">RESET VIEW</button></div></div>
       <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><canvas id="world-map-webgl" aria-hidden="true"></canvas><canvas id="strategic-graph-canvas" aria-hidden="true"></canvas><div id="map-input-layer" role="application" aria-label="Interactive world map. Use the mouse or touch to pan and zoom, and click a territory to select it." tabindex="0"></div><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
       <div class="map-footer"><span id="map-status">Loading country geometry…</span><span>SCENARIO DATA: 2026 <i>·</i> MAP DATA: PROVISIONAL</span></div>
     </section>
@@ -203,8 +203,8 @@ let strategicLandClip: Path2D | null = null;
 let strategicLandClipProjection: ReturnType<typeof geoNaturalEarth1> | null = null;
 let strategicLandClipCountries: CountryFeature[] | null = null;
 let strategicLandClipLakes: LakeFeature[] | null = null;
-let nodesModeEnabled = false;
-let pathsModeEnabled = false;
+let nodesModeEnabled = true;
+let pathsModeEnabled = true;
 let selectedCityId: string | null = null;
 let biomeModeEnabled = false;
 let biomeFeatures: BiomeFeature[] = [];
