@@ -2,7 +2,7 @@ import { geoBounds, geoCentroid, geoContains, geoDistance, geoNaturalEarth1, geo
 import { BIOME_TAGS } from "./terrain";
 import { WebGLMapRenderer } from "./webgl-renderer";
 import { loadAllFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
-import { buildStrategicGraph, type StrategicGraph } from "./world-graph";
+import type { StrategicGraph } from "./world-graph";
 import "./style.css";
 
 // Vite resolves this local asset to a cache-busted production URL.
@@ -474,25 +474,44 @@ function selectProvince(id: string): void {
   mapStatus.textContent = `Selected state/province: ${provinceName} · ${countryName}`;
 }
 
+let strategicGraphWorker: Worker | null = null;
+let strategicGraphBuildStarted = false;
+
 function rebuildStrategicGraph(): void {
-  // The strategic graph is optional visualization data. Do not build it during
-  // startup unless the player enables nodes or paths; its global edge analysis
-  // is expensive on low-end CPUs and is not needed for the base map.
-  if ((!nodesModeEnabled && !pathsModeEnabled) || !administrativeDataReady || !cityDataReady || strategicGraph) return;
-  try {
-    strategicGraph = buildStrategicGraph(allAdministrativeFeatures, cityRecords.map((record) => ({
-      id: record.id,
-      name: record.name,
-      country: record.country,
-      isCapital: record.isCapital,
-      feature: record.feature,
-    })));
+  // Build the expensive global topology away from the UI thread. This keeps
+  // startup and map interaction responsive on low-power CPUs.
+  if ((!nodesModeEnabled && !pathsModeEnabled) || !administrativeDataReady || !cityDataReady ||
+      strategicGraph || strategicGraphBuildStarted) return;
+  strategicGraphBuildStarted = true;
+  mapStatus.textContent = "Preparing strategic nodes and paths in background…";
+  strategicGraphWorker = new Worker(new URL("./world-graph-worker.ts", import.meta.url), { type: "module" });
+  strategicGraphWorker.onmessage = (event: MessageEvent<{ type: "success"; graph: StrategicGraph } | { type: "error"; message: string }>) => {
+    strategicGraphWorker?.terminate();
+    strategicGraphWorker = null;
+    if (event.data.type === "error") {
+      strategicGraphBuildStarted = false;
+      console.error("Strategic graph worker failed:", event.data.message);
+      mapStatus.textContent = "Strategic graph failed to build; map layers remain available.";
+      return;
+    }
+    strategicGraph = event.data.graph;
     drawStrategicGraph();
     mapStatus.textContent = `Strategic graph ready · ${strategicGraph.nodes.length.toLocaleString()} nodes · ${strategicGraph.paths.length.toLocaleString()} provisional paths`;
-  } catch (error) {
-    console.error("Strategic node/path graph failed to build:", error);
+  };
+  strategicGraphWorker.onerror = (error) => {
+    strategicGraphWorker?.terminate();
+    strategicGraphWorker = null;
+    strategicGraphBuildStarted = false;
+    console.error("Strategic graph worker failed:", error);
     mapStatus.textContent = "Strategic graph failed to build; map layers remain available.";
-  }
+  };
+  strategicGraphWorker.postMessage({
+    provinces: allAdministrativeFeatures,
+    cities: cityRecords.map((record) => ({
+      id: record.id, name: record.name, country: record.country,
+      isCapital: record.isCapital, feature: record.feature,
+    })),
+  });
 }
 
 function drawStrategicGraph(): void {
