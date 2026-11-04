@@ -73,13 +73,13 @@ app.innerHTML = `
       <div class="section-heading">SELECTED TERRITORY <span class="live-label">MAP</span></div>
       <section class="selection-card" id="selection-card">
         <div class="selection-icon">◎</div>
-        <div><h2 id="selected-name">Select a province or city</h2><p id="selected-detail">Click a state/province; zoom in to select urban footprints.</p></div>
+        <div><h2 id="selected-name">Select a province or city</h2><p id="selected-detail">Click a province node or a major-city marker.</p></div>
       </section>
       <div class="section-heading">PROJECT STATUS</div>
       <ul class="status-list">
         <li><span class="status-check">✓</span><span>Client scaffold</span><span class="status-word">READY</span></li>
         <li><span class="status-check">✓</span><span>Selectable province polygons</span><span class="status-word">READY</span></li>
-        <li><span class="status-check">✓</span><span>Selectable urban-area polygons</span><span class="status-word">READY</span></li>
+        <li><span class="status-check">✓</span><span>Major-city strategic nodes</span><span class="status-word">READY</span></li>
         <li><span class="status-pending">•</span><span>Detailed provinces & islands</span><span class="status-word pending">IN PROGRESS</span></li>
         <li><span class="status-pending">•</span><span>Multiplayer server</span><span class="status-word pending">PLANNED</span></li>
       </ul>
@@ -855,7 +855,7 @@ void loadCityGeometry()
     mapStatus.textContent = `Major city nodes loaded · ${cityRecords.length.toLocaleString()} cities and capitals`;
   })
   .catch((error) => {
-    console.error("World at War urban-area geometry failed to load:", error);
+    console.error("World at War major-city data failed to load:", error);
     mapStatus.textContent = "Major-city data failed to load; province nodes remain available.";
   });
 void loadAllFirstLevelBoundaries()
