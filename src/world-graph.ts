@@ -154,7 +154,10 @@ export function buildStrategicGraph(provinces: AdministrativeFeature[], cities: 
   for (const owners of edgeOwners.values()) {
     const ids = [...owners];
     for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
-      const [from, to] = [ids[i]!, ids[j]!].sort();
+      const left = ids[i]!;
+      const right = ids[j]!;
+      const from = left < right ? left : right;
+      const to = left < right ? right : left;
       const key = `${from}|${to}`;
       if (connectedPairs.has(key)) continue;
       connectedPairs.add(key);
