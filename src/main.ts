@@ -200,6 +200,10 @@ let strategicLandClip: Path2D | null = null;
 let strategicLandClipProjection: ReturnType<typeof geoNaturalEarth1> | null = null;
 let strategicLandClipCountries: CountryFeature[] | null = null;
 let strategicLandClipLakes: LakeFeature[] | null = null;
+let graphProjectionCache: ReturnType<typeof geoNaturalEarth1> | null = null;
+let graphCache: StrategicGraph | null = null;
+let graphProjectedPoints = new Map<string, [number, number]>();
+let graphPathCache: Path2D | null = null;
 let nodesModeEnabled = true;
 let pathsModeEnabled = true;
 let selectedCityId: string | null = null;
@@ -492,27 +496,46 @@ function drawStrategicGraph(): void {
   context.clearRect(0, 0, width, height);
   if ((!strategicGraph && !cityDataReady) || (!nodesModeEnabled && !pathsModeEnabled) || !mapProjection) return;
 
-  const projected = new Map<string, [number, number]>();
-  for (const node of strategicGraph?.nodes ?? []) {
-    const point = mapProjection([node.longitude, node.latitude]);
-    if (point && Number.isFinite(point[0]) && Number.isFinite(point[1])) {
-      projected.set(node.id, [point[0] * zoomScale + panX, point[1] * zoomScale + panY]);
+  // Geographic projection is static while panning/zooming. Cache it and the
+  // route Path2D so pointer movement doesn't re-project thousands of nodes
+  // and rebuild every route on every animation frame.
+  if (graphProjectionCache !== mapProjection || graphCache !== strategicGraph) {
+    graphProjectedPoints = new Map();
+    graphPathCache = new Path2D();
+    if (strategicGraph) {
+      for (const node of strategicGraph.nodes) {
+        const point = mapProjection([node.longitude, node.latitude]);
+        if (point && Number.isFinite(point[0]) && Number.isFinite(point[1])) {
+          graphProjectedPoints.set(node.id, [point[0], point[1]]);
+        }
+      }
+      const nodesById = new Map(strategicGraph.nodes.map((node) => [node.id, node] as const));
+      for (const path of strategicGraph.paths) {
+        const from = graphProjectedPoints.get(path.from), to = graphProjectedPoints.get(path.to);
+        if (!from || !to) continue;
+        graphPathCache.moveTo(from[0], from[1]);
+        if (path.via) {
+          const via = mapProjection(path.via);
+          if (via) graphPathCache.lineTo(via[0], via[1]);
+        }
+        graphPathCache.lineTo(to[0], to[1]);
+      }
     }
+    graphProjectionCache = mapProjection;
+    graphCache = strategicGraph;
   }
 
-  if (pathsModeEnabled && strategicGraph) {
-    context.save();
-    if (mapProjection && (!strategicLandClip ||
-        strategicLandClipProjection !== mapProjection ||
-        strategicLandClipCountries !== countryFeatures ||
-        strategicLandClipLakes !== lakeFeatures)) {
+  context.save();
+  context.setTransform(pixelRatio * zoomScale, 0, 0, pixelRatio * zoomScale, pixelRatio * panX, pixelRatio * panY);
+  if (pathsModeEnabled && strategicGraph && graphPathCache) {
+    if (!strategicLandClip || strategicLandClipProjection !== mapProjection ||
+        strategicLandClipCountries !== countryFeatures || strategicLandClipLakes !== lakeFeatures) {
       const landPath = new Path2D();
       const geoPathGenerator = geoPath(mapProjection);
       for (const feature of countryFeatures) {
         const pathData = geoPathGenerator(feature);
         if (pathData) landPath.addPath(new Path2D(pathData));
       }
-      // Lakes are included in the even-odd mask so graph links cannot cross them.
       for (const feature of lakeFeatures) {
         const pathData = geoPathGenerator(feature);
         if (pathData) landPath.addPath(new Path2D(pathData));
@@ -522,84 +545,66 @@ function drawStrategicGraph(): void {
       strategicLandClipCountries = countryFeatures;
       strategicLandClipLakes = lakeFeatures;
     }
-    if (strategicLandClip) {
-      // The cached mask is in untransformed projection coordinates. Install the
-      // clip under the map transform, then draw screen-space graph lines as before.
-      context.setTransform(pixelRatio * zoomScale, 0, 0, pixelRatio * zoomScale, pixelRatio * panX, pixelRatio * panY);
-      context.clip(strategicLandClip, "evenodd");
-      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    }
+    if (strategicLandClip) context.clip(strategicLandClip, "evenodd");
     context.strokeStyle = "rgba(35, 36, 31, 0.66)";
-    context.lineWidth = Math.max(0.7, Math.min(1.5, zoomScale * 0.16));
-    context.setLineDash([4, 3]);
-    context.beginPath();
-    for (const path of strategicGraph.paths) {
-      const from = projected.get(path.from), to = projected.get(path.to);
-      if (!from || !to) continue;
-      if (Math.max(from[0], to[0]) < -40 || Math.min(from[0], to[0]) > width + 40 ||
-          Math.max(from[1], to[1]) < -40 || Math.min(from[1], to[1]) > height + 40) continue;
-      context.moveTo(from[0], from[1]);
-      if (path.via && mapProjection) {
-        const via = mapProjection(path.via);
-        if (via) context.lineTo(via[0] * zoomScale + panX, via[1] * zoomScale + panY);
-      }
-      context.lineTo(to[0], to[1]);
-    }
-    context.stroke();
-    context.restore();
+    context.lineWidth = Math.max(0.7, Math.min(1.5, zoomScale * 0.16)) / zoomScale;
+    context.setLineDash([4 / zoomScale, 3 / zoomScale]);
+    context.stroke(graphPathCache);
   }
 
-  if (nodesModeEnabled) {
+  if (nodesModeEnabled && strategicGraph) {
     const zoomFactor = Math.max(0.9, Math.min(3.2, Math.pow(zoomScale, 0.22)));
-    const nodes = strategicGraph?.nodes ?? [];
-    for (const node of nodes) {
-      const point = projected.get(node.id);
-      if (!point || point[0] < -20 || point[0] > width + 20 || point[1] < -20 || point[1] > height + 20) continue;
-      const radius = (node.isCapital ? 5.1 : node.kind === "city" ? 3.8 : 2.2) * zoomFactor;
+    for (const node of strategicGraph.nodes) {
+      const point = graphProjectedPoints.get(node.id);
+      if (!point) continue;
+      const x = point[0], y = point[1];
+      if (x * zoomScale + panX < -20 || x * zoomScale + panX > width + 20 ||
+          y * zoomScale + panY < -20 || y * zoomScale + panY > height + 20) continue;
+      const radius = (node.isCapital ? 5.1 : node.kind === "city" ? 3.8 : 2.2) * zoomFactor / zoomScale;
       context.beginPath();
       if (node.isCapital) {
         for (let i = 0; i < 10; i++) {
           const angle = -Math.PI / 2 + i * Math.PI / 5;
           const r = i % 2 === 0 ? radius * 1.55 : radius * 0.72;
-          const x = point[0] + Math.cos(angle) * r;
-          const y = point[1] + Math.sin(angle) * r;
-          if (i === 0) context.moveTo(x, y); else context.lineTo(x, y);
+          const px = x + Math.cos(angle) * r, py = y + Math.sin(angle) * r;
+          if (i === 0) context.moveTo(px, py); else context.lineTo(px, py);
         }
         context.closePath();
-      } else context.arc(point[0], point[1], radius, 0, Math.PI * 2);
+      } else context.arc(x, y, radius, 0, Math.PI * 2);
       context.fillStyle = node.isCapital ? "#e8ad43" : node.kind === "city" ? "#7b322d" : "#282923";
       context.fill();
-      context.lineWidth = Math.max(0.7, Math.min(1.35, zoomFactor));
+      context.lineWidth = Math.max(0.7, Math.min(1.35, zoomFactor)) / zoomScale;
       context.strokeStyle = "#f0e4c7";
       context.stroke();
     }
-    if (!strategicGraph) {
-      for (const city of cityRecords) {
-        const projectedCity = mapProjection([city.longitude, city.latitude]);
-        if (!projectedCity) continue;
-        const x = projectedCity[0] * zoomScale + panX, y = projectedCity[1] * zoomScale + panY;
-        if (x < -20 || x > width + 20 || y < -20 || y > height + 20) continue;
-        const radius = (city.isCapital ? 5.1 : 3.8) * zoomFactor;
-        context.beginPath();
-        if (city.isCapital) {
-          for (let i = 0; i < 10; i++) {
-            const angle = -Math.PI / 2 + i * Math.PI / 5;
-            const r = i % 2 === 0 ? radius * 1.5 : radius * 0.7;
-            const px = x + Math.cos(angle) * r, py = y + Math.sin(angle) * r;
-            if (i === 0) context.moveTo(px, py); else context.lineTo(px, py);
-          }
-          context.closePath();
-        } else context.arc(x, y, radius, 0, Math.PI * 2);
-        context.fillStyle = city.isCapital ? "#e8ad43" : "#7b322d";
-        context.fill();
-        context.lineWidth = Math.max(0.9, Math.min(1.5, zoomFactor));
-        context.strokeStyle = "#f0e4c7";
-        context.stroke();
-      }
+  } else if (nodesModeEnabled && cityDataReady) {
+    const zoomFactor = Math.max(0.9, Math.min(3.2, Math.pow(zoomScale, 0.22)));
+    for (const city of cityRecords) {
+      const point = mapProjection([city.longitude, city.latitude]);
+      if (!point) continue;
+      const x = point[0], y = point[1];
+      if (x * zoomScale + panX < -20 || x * zoomScale + panX > width + 20 ||
+          y * zoomScale + panY < -20 || y * zoomScale + panY > height + 20) continue;
+      const radius = (city.isCapital ? 5.1 : 3.8) * zoomFactor / zoomScale;
+      context.beginPath();
+      if (city.isCapital) {
+        for (let i = 0; i < 10; i++) {
+          const angle = -Math.PI / 2 + i * Math.PI / 5;
+          const r = i % 2 === 0 ? radius * 1.5 : radius * 0.7;
+          const px = x + Math.cos(angle) * r, py = y + Math.sin(angle) * r;
+          if (i === 0) context.moveTo(px, py); else context.lineTo(px, py);
+        }
+        context.closePath();
+      } else context.arc(x, y, radius, 0, Math.PI * 2);
+      context.fillStyle = city.isCapital ? "#e8ad43" : "#7b322d";
+      context.fill();
+      context.lineWidth = Math.max(0.9, Math.min(1.5, zoomFactor)) / zoomScale;
+      context.strokeStyle = "#f0e4c7";
+      context.stroke();
     }
   }
+  context.restore();
 }
-
 function scheduleWebGLRender(): void {
   if (webglRenderFrame) return;
   webglRenderFrame = requestAnimationFrame(() => {
