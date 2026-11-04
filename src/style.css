@@ -176,3 +176,6 @@ dialog p { color: #716958; font-size: 13px; line-height: 1.6; }
 .production-row:last-child { border-bottom:0; }
 .production-row small { grid-column:1 / -1; color:#9eacb4; font-size:8px; }
 .game-footnote { margin:0; color:#82939d; font-size:8px; line-height:1.5; }
+
+.legend-city { border-radius:50%; background:#7b322d; border:1px solid #f0e4c7; }
+.legend-capital { width:auto !important; height:auto !important; color:#e8ad43; font-size:13px; line-height:9px; }
