@@ -12,8 +12,6 @@ const waterTextureUrl = new URL("./water_texture.jpg", import.meta.url).href;
 type CountryProperties = { name?: string; [key: string]: unknown };
 type CountryFeature = GeoJSON.Feature<GeoJSON.Geometry, CountryProperties>;
 type BiomeFeature = GeoJSON.Feature<GeoJSON.Geometry, { BIOME_NAME?: string; [key: string]: unknown }>;
-type CityAreaProperties = { name?: string; NAME?: string; scalerank?: number; featurecla?: string; area_sqkm?: number; [key: string]: unknown };
-type CityAreaFeature = GeoJSON.Feature<GeoJSON.Geometry, CityAreaProperties>;
 type LakeFeature = GeoJSON.Feature<GeoJSON.Geometry, { name?: string; NAME?: string; [key: string]: unknown }>;
 type CityRecord = { id: string; name: string; country: string; longitude: number; latitude: number; isCapital: boolean; scaleRank: number };
 
@@ -86,7 +84,7 @@ app.innerHTML = `
       <div class="section-heading">SUPPORTED BIOMES <span class="live-label">8 TAGS</span></div>
       <div class="biome-tags" aria-label="Supported biome tags">${BIOME_TAGS.map((biome) => `<span class="biome-tag">${biome}</span>`).join("")}</div>
       <p class="biome-note">Toggle the biome map to view broad ecological regions. This is a reference overlay, not yet province-level game terrain data.</p>
-      <div class="sidebar-note"><strong>*Map-data note</strong><p>Countries use Natural Earth Admin 0 geometry; states/provinces use Natural Earth 1:10m Admin 1. City polygons use Natural Earth 1:10m urban areas matched to nearby 1:10m populated places. Lakes use Natural Earth 1:10m lake polygons. Urban footprints are built-up areas, not official municipal borders. Optional biome overlay: RESOLVE Ecoregions 2017, CC BY 4.0.</p></div>
+      <div class="sidebar-note"><strong>*Map-data note</strong><p>Countries use Natural Earth Admin 0 geometry; states/provinces use Natural Earth 1:10m Admin 1. Major-city nodes use Natural Earth 1:10m populated places (scale ranks 0–4), plus all national capitals. Lakes use Natural Earth 1:10m lake polygons. Optional biome overlay: RESOLVE Ecoregions 2017, CC BY 4.0.</p></div>
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
@@ -123,9 +121,6 @@ let projectedHeight = 0;
 let projectedCountries: CountryFeature[] | null = null;
 let projectedAdministrative: AdministrativeFeature[] | null = null;
 let projectedLakes: LakeFeature[] | null = null;
-let projectedCities: CityAreaFeature[] | null = null;
-let cityGeometryWorker: Worker | null = null;
-let cityGeometryBuildKey: string | null = null;
 let projectedBiomes: BiomeFeature[] | null = null;
 let projectedBiomeMode: boolean | null = null;
 
@@ -135,7 +130,6 @@ type SpatialIndex = {
 };
 const SPATIAL_CELL_DEGREES = 10;
 let administrativeSpatialIndex: SpatialIndex = { cells: new Map(), global: [] };
-let citySpatialIndex: SpatialIndex = { cells: new Map(), global: [] };
 
 function spatialCellKey(longitude: number, latitude: number): string {
   const x = Math.max(0, Math.min(35, Math.floor((longitude + 180) / SPATIAL_CELL_DEGREES)));
@@ -194,10 +188,8 @@ let viewHeight = 650;
 let countryFeatures: CountryFeature[] = [];
 let allAdministrativeFeatures: AdministrativeFeature[] = [];
 let administrativeDataReady = false;
-let cityAreaFeatures: CityAreaFeature[] = [];
 let cityRecords: CityRecord[] = [];
 let cityRecordsById = new Map<string, CityRecord>();
-let cityRecordByFeature = new WeakMap<object, CityRecord>();
 let lakeFeatures: LakeFeature[] = [];
 let cityDataReady = false;
 let selectedProvinceId: string | null = null;
@@ -221,7 +213,6 @@ const pathsToggle = document.querySelector<HTMLButtonElement>("#toggle-paths")!;
 
 // Generalize the global ecoregion geometry slightly: this is a broad map overlay,
 // not navigation-grade data, and smaller paths render much faster in the browser.
-const CITY_AREAS_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_urban_areas.geojson";
 const POPULATED_PLACES_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_populated_places.geojson";
 const LAKES_GEOJSON_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_lakes.geojson";
 
