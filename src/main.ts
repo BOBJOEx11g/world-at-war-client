@@ -360,11 +360,7 @@ function renderMap(): void {
       webglRenderer.setLakeGeometry(lakeFeatures, project);
       projectedLakes = lakeFeatures;
     }
-else if (projectionChanged || projectedCities !== cityAreaFeatures) {
-      // Prepare urban triangulation asynchronously only when the player zooms in.
-      projectedCities = null;
-    }
-    if (projectionChanged || projectedBiomes !== biomeFeatures || projectedBiomeMode !== biomeModeEnabled) {
+if (projectionChanged || projectedBiomes !== biomeFeatures || projectedBiomeMode !== biomeModeEnabled) {
       webglRenderer.setBiomeGeometry(
         biomeModeEnabled ? biomeFeatures : [],
         project,
