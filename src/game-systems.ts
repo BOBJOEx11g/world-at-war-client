@@ -67,9 +67,12 @@ export function mountGameSystems():void {
  function afford(cost:Partial<Wallet>){return keys.every(k=>state.wallet[k]>=(cost[k]||0));}
  function pay(cost:Partial<Wallet>){keys.forEach(k=>state.wallet[k]-=cost[k]||0);}
  function cost(costs:Partial<Wallet>){return keys.filter(k=>(costs[k]||0)>0).map(k=>k.toUpperCase()+" "+n(costs[k]!)).join(" · ");}
- function refreshTasks(){
-  if(state.research&&left(state.research)===0){if(!hasTech(state.research.id))state.researched.push(state.research.id);state.research=null;save();}
-  Object.entries(state.construction).forEach(([id,task])=>{if(left(task)===0){const list=state.buildings[id]||[];if(!list.includes(task.id))list.push(task.id);state.buildings[id]=list;delete state.construction[id];save();}});
+ function refreshTasks():boolean {
+  let changed=false;
+  if(state.research&&left(state.research)===0){if(!hasTech(state.research.id))state.researched.push(state.research.id);state.research=null;changed=true;}
+  Object.entries(state.construction).forEach(([id,task])=>{if(left(task)===0){const list=state.buildings[id]||[];if(!list.includes(task.id))list.push(task.id);state.buildings[id]=list;delete state.construction[id];changed=true;}});
+  if(changed)save();
+  return changed;
  }
  function renderResearch(){
   const active=state.research; rsTimer.textContent=active?duration(left(active)):"IDLE";
@@ -87,7 +90,7 @@ export function mountGameSystems():void {
  function renderBuildings(){
   const id=city?.cityId; buildLocation.innerHTML='<strong>'+(city?.name||"No city selected")+'</strong><span class="game-timer">'+(id?"SELECTED":"CITY")+'</span>';
   const active=id?state.construction[id]:null;
-  buildStatus.innerHTML=(active?"Constructing "+(buildings.find(b=>b.id===active.id)?.name||active.id)+" · "+duration(left(active))+" remaining":id?"No active construction in this city.":"Select a major city node to construct buildings there.")+(active?' <button class="game-speed" data-speed="construction">SPEED UP · 1 GOLD / 10s</button>':"");
+  buildStatus.innerHTML='<span id="build-timer">'+(active?"Constructing "+(buildings.find(b=>b.id===active.id)?.name||active.id)+" · "+duration(left(active))+" remaining":id?"No active construction in this city.":"Select a major city node to construct buildings there.")+'</span>'+(active?' <button class="game-speed" data-speed="construction">SPEED UP · 1 GOLD / 10s</button>':"");
   const built=id?state.buildings[id]||[]:[];
   buildList.innerHTML=buildings.map(b=>{
    const done=built.includes(b.id), researched=hasTech(b.tech), activeBuild=!!active;
@@ -112,8 +115,16 @@ export function mountGameSystems():void {
    const kind=btn.dataset.speed;state.wallet.gold-=1;
    if(kind==="research"&&state.research)state.research.endsAt-=10000;
    if(kind==="construction"&&city?.cityId&&state.construction[city.cityId])state.construction[city.cityId]!.endsAt-=10000;
-   save();render();
+   save();
+   document.querySelectorAll<HTMLElement>(".resource-item").forEach((item,i)=>{const v=item.querySelector("strong");if(v)v.textContent=n(state.wallet[keys[i]!]);});
+   updateTimers();
   }));
+ }
+ function updateTimers(){
+  rsTimer.textContent=state.research?duration(left(state.research)):"IDLE";
+  const id=city?.cityId, task=id?state.construction[id]:null;
+  const timer=panel.querySelector<HTMLElement>("#build-timer");
+  if(timer)timer.textContent=task?"Constructing "+(buildings.find(b=>b.id===task.id)?.name||task.id)+" · "+duration(left(task))+" remaining":id?"No active construction in this city.":"Select a major city node to construct buildings there.";
  }
  branchSelect.addEventListener("change",()=>{branch=branchSelect.value as Branch;renderResearch();});
  document.addEventListener("game-location-selected",event=>{const d=(event as CustomEvent<Location>).detail;city=d?.cityId?d:null;renderBuildings();});
@@ -123,5 +134,5 @@ export function mountGameSystems():void {
   const id=city?.cityId;if(id&&state.construction[id])state.construction[id]!.endsAt-=ms;
   save();render();
  });
- render();window.setInterval(render,1000);
+ render();window.setInterval(()=>{if(refreshTasks())render();else updateTimers();},1000);
 }
