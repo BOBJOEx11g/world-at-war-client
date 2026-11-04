@@ -389,8 +389,7 @@ else if (projectionChanged || projectedCities !== cityAreaFeatures) {
     projectedHeight = viewHeight;
 
     let selectedFeature: GeoJSON.Feature<GeoJSON.Geometry> | null = null;
-    if (selectedCityId) selectedFeature = cityRecordsById.get(selectedCityId)?.feature ?? null;
-    else if (selectedProvinceId) {
+    if (selectedProvinceId) {
       selectedFeature = allAdministrativeFeatures.find((feature) =>
         String(feature.id ?? feature.properties.shapeID ?? feature.properties.shapeName ?? "unknown") === selectedProvinceId
       ) ?? null;
