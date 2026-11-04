@@ -91,7 +91,7 @@ app.innerHTML = `
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
       <div class="map-toolbar"><div><span class="toolbar-kicker">STRATEGIC VIEW</span><strong>Global map</strong></div><div class="map-actions"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-caribbean">CARIBBEAN</button><button id="toggle-biomes" aria-pressed="false">BIOMES: OFF</button><button id="toggle-nodes" class="is-active" aria-pressed="true">NODES: ON</button><button id="toggle-paths" class="is-active" aria-pressed="true">PATHS: ON</button><button id="reset-view">RESET VIEW</button></div></div>
-      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><canvas id="world-map-webgl" aria-hidden="true"></canvas><canvas id="strategic-graph-canvas" aria-hidden="true"></canvas><div id="map-input-layer" role="application" aria-label="Interactive world map. Use the mouse or touch to pan and zoom, and click a territory to select it." tabindex="0"></div><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
+      <div class="map-wrap" id="map-wrap"><div class="map-loading" id="map-loading">Rendering world geometry…</div><canvas id="world-map-webgl" aria-hidden="true"></canvas><canvas id="strategic-graph-canvas" aria-hidden="true"></canvas><div id="map-input-layer" role="application" aria-label="Interactive world map. Use the mouse or touch to pan and zoom, and click a territory to select it." tabindex="0"></div><div class="map-legend" id="map-legend"><span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> Province node</span><span><i class="legend-city"></i> Major city</span><span><i class="legend-capital">★</i> Capital</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span></div><div class="map-coordinates">WORLD MAP · PROVISIONAL GEOGRAPHY</div></div>
       <div class="map-footer"><span id="map-status">Loading country geometry…</span><span>SCENARIO DATA: 2026 <i>·</i> MAP DATA: PROVISIONAL</span></div>
     </section>
   </main>
@@ -418,6 +418,10 @@ function selectCity(id: string, name: string, country: string): void {
   selectedName.textContent = name;
   selectedDetail.textContent = `${name} · ${country}. Major city node.`;
   selectionCard.classList.add("has-selection");
+  if (webglRenderer && mapProjection) {
+    webglRenderer.setSelection(null, (coordinate) => { const point = mapProjection!(coordinate as [number, number]); return point ? [point[0], point[1]] : null; });
+    scheduleWebGLRender();
+  }
   mapStatus.textContent = `Selected major city: ${name} · ${country}`;
   document.dispatchEvent(new CustomEvent("game-location-selected", { detail: { cityId: id, name, country } }));
 }
@@ -646,7 +650,7 @@ pathsToggle.addEventListener("click", () => {
 
 function updateBiomeLegend(): void {
   if (!biomeModeEnabled) {
-    mapLegend.innerHTML = '<span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> State / province</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span>';
+    mapLegend.innerHTML = '<span><i class="legend-country"></i> Country</span><span><i class="legend-province"></i> Province node</span><span><i class="legend-city"></i> Major city</span><span><i class="legend-capital">★</i> Capital</span><span><i class="legend-selected"></i> Selected</span><span><i class="legend-ocean"></i> Ocean / lake</span>';
     return;
   }
   mapLegend.innerHTML = Object.entries(BIOME_COLORS)
@@ -861,7 +865,7 @@ void loadAllFirstLevelBoundaries()
     administrativeDataReady = true;
     rebuildStrategicGraph();
     renderMap();
-    mapStatus.textContent = "Global state/province layer visible · " + allAdministrativeFeatures.length.toLocaleString() + " polygons" + (cityDataReady ? ` · ${cityAreaFeatures.length.toLocaleString()} urban footprints loaded` : " · urban areas loading…");
+    mapStatus.textContent = "Global state/province layer visible · " + allAdministrativeFeatures.length.toLocaleString() + " polygons" + (cityDataReady ? ` · ${cityRecords.length.toLocaleString()} major cities loaded` : " · major cities loading…");
   })
   .catch((error) => {
     console.error("World at War global administrative geography failed to load:", error);
