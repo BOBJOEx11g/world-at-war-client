@@ -359,9 +359,8 @@ export class WebGLMapRenderer {
 
   setSelection(feature: Feature<Geometry> | null, project: Projection): void {
     const arrays: GeometryArrays = { fill: [], borders: [] };
-    // Selection highlighting is interactive: simplify to sub-pixel detail before triangulating.
-    // This avoids blocking the main thread on exceptionally detailed provinces/city footprints.
-    if (feature) collectGeometry(feature.geometry, project, arrays, 0.9, 2.2);
+    // Province selection must retain the source boundary; do not simplify it into a coarse shape.
+    if (feature) collectGeometry(feature.geometry, project, arrays, 0, 1.6);
     this.selectionFillCount = uploadBuffer(this.gl, this.selectionFillBuffer, arrays.fill);
     this.selectionBorderCount = uploadBorderBuffer(this.gl, this.selectionBorderBuffer, arrays.borders);
   }
