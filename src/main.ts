@@ -121,6 +121,8 @@ let projectedCountries: CountryFeature[] | null = null;
 let projectedAdministrative: AdministrativeFeature[] | null = null;
 let projectedLakes: LakeFeature[] | null = null;
 let projectedCities: CityAreaFeature[] | null = null;
+let cityGeometryWorker: Worker | null = null;
+let cityGeometryBuildKey: string | null = null;
 let projectedBiomes: BiomeFeature[] | null = null;
 let projectedBiomeMode: boolean | null = null;
 
@@ -345,6 +347,48 @@ async function loadCountryGeometry(): Promise<void> {
   }
 }
 
+function ensureCityGeometry(projection: ReturnType<typeof geoNaturalEarth1>): void {
+  if (!webglRenderer || !cityDataReady || projectedCities === cityAreaFeatures) return;
+  const scale = projection.scale();
+  const translate = projection.translate() as [number, number];
+  const key = `${scale}:${translate[0]}:${translate[1]}`;
+  if (cityGeometryWorker && cityGeometryBuildKey === key) return;
+
+  // Cancel stale work after a resize/projection change. Only the newest geometry
+  // is uploaded, and expensive triangulation stays off the UI thread.
+  cityGeometryWorker?.terminate();
+  const worker = new Worker(new URL("./city-geometry-worker.ts", import.meta.url), { type: "module" });
+  cityGeometryWorker = worker;
+  cityGeometryBuildKey = key;
+  worker.onmessage = (event: MessageEvent<
+    | { type: "success"; fill: Float32Array; borders: Float32Array }
+    | { type: "error"; message: string }
+  >) => {
+    worker.terminate();
+    if (cityGeometryWorker !== worker) return;
+    cityGeometryWorker = null;
+    cityGeometryBuildKey = null;
+    if (!mapProjection ||
+        `${mapProjection.scale()}:${mapProjection.translate()[0]}:${mapProjection.translate()[1]}` !== key) return;
+    if (event.data.type === "error") {
+      console.error("City geometry worker failed:", event.data.message);
+      mapStatus.textContent = "Urban detail could not be prepared; the base map remains available.";
+      return;
+    }
+    webglRenderer?.setCityGeometryData(event.data.fill, event.data.borders);
+    projectedCities = cityAreaFeatures;
+    scheduleWebGLRender();
+  };
+  worker.onerror = (error) => {
+    worker.terminate();
+    if (cityGeometryWorker !== worker) return;
+    cityGeometryWorker = null;
+    cityGeometryBuildKey = null;
+    console.error("City geometry worker failed:", error);
+  };
+  worker.postMessage({ areas: cityAreaFeatures, scale, translate });
+}
+
 function renderMap(): void {
   const bounds = mapWrap.getBoundingClientRect();
   viewWidth = Math.max(1, Math.floor(bounds.width));
@@ -379,11 +423,10 @@ function renderMap(): void {
       webglRenderer.setLakeGeometry(lakeFeatures, project);
       projectedLakes = lakeFeatures;
     }
-    if (zoomScale >= 4 && (projectionChanged || projectedCities !== cityAreaFeatures)) {
-      webglRenderer.setCityGeometry(cityAreaFeatures, project);
-      projectedCities = cityAreaFeatures;
+    if (zoomScale >= 4 && cityDataReady && (projectionChanged || projectedCities !== cityAreaFeatures)) {
+      ensureCityGeometry(projection);
     } else if (projectionChanged || projectedCities !== cityAreaFeatures) {
-      // Delay expensive urban triangulation until the player actually zooms in.
+      // Prepare urban triangulation asynchronously only when the player zooms in.
       projectedCities = null;
     }
     if (projectionChanged || projectedBiomes !== biomeFeatures || projectedBiomeMode !== biomeModeEnabled) {
@@ -609,11 +652,7 @@ function scheduleWebGLRender(): void {
     webglRenderFrame = 0;
     if (!webglRenderer || webglFailed) return;
     if (zoomScale >= 4 && cityDataReady && projectedCities !== cityAreaFeatures && mapProjection) {
-      webglRenderer.setCityGeometry(cityAreaFeatures, (coordinate) => {
-        const point = mapProjection!(coordinate as [number, number]);
-        return point ? [point[0], point[1]] : null;
-      });
-      projectedCities = cityAreaFeatures;
+      ensureCityGeometry(mapProjection);
     }
     webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
     drawStrategicGraph();
