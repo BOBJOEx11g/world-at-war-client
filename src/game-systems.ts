@@ -73,7 +73,7 @@ export function mountGameSystems():void {
  }
  function renderResearch(){
   const active=state.research; rsTimer.textContent=active?duration(left(active)):"IDLE";
-  rsStatus.textContent=active?"Researching "+(techs.find(t=>t.id===active.id)?.name||active.id)+". One national research slot is available.":"One national research project can run at a time.";
+  rsStatus.innerHTML=(active?"Researching "+(techs.find(t=>t.id===active.id)?.name||active.id)+". One national research slot is available.":"One national research project can run at a time.")+(active?' <button class="game-speed" data-speed="research">SPEED UP · 1 GOLD / 10s</button>':"");
   rsList.innerHTML=techs.filter(t=>t.branch===branch).map(t=>{
    const done=hasTech(t.id), missing=t.requires.filter(id=>!hasTech(id)), blocked=!!active||done||missing.length>0;
    const req=missing.map(id=>techs.find(x=>x.id===id)?.name||id).join(", ");
@@ -107,6 +107,13 @@ export function mountGameSystems():void {
   refreshTasks();
   document.querySelectorAll<HTMLElement>(".resource-item").forEach((item,i)=>{const v=item.querySelector("strong");if(v)v.textContent=n(state.wallet[keys[i]!]);});
   renderResearch();renderBuildings();renderProduction();
+  panel.querySelectorAll<HTMLButtonElement>("[data-speed]").forEach(btn=>btn.addEventListener("click",()=>{
+   if(state.wallet.gold<1)return;
+   const kind=btn.dataset.speed;state.wallet.gold-=1;
+   if(kind==="research"&&state.research)state.research.endsAt-=10000;
+   if(kind==="construction"&&city?.cityId&&state.construction[city.cityId])state.construction[city.cityId]!.endsAt-=10000;
+   save();render();
+  }));
  }
  branchSelect.addEventListener("change",()=>{branch=branchSelect.value as Branch;renderResearch();});
  document.addEventListener("game-location-selected",event=>{const d=(event as CustomEvent<Location>).detail;city=d?.cityId?d:null;renderBuildings();});
