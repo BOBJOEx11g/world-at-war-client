@@ -724,20 +724,22 @@ mapInput.addEventListener("click", (event: MouseEvent) => {
   if (!longitudeLatitude || !longitudeLatitude.every(Number.isFinite)) return;
   const [longitude, latitude] = longitudeLatitude;
 
-  if (strategicGraph && nodesModeEnabled) {
+  // Test city/capital markers before province polygons. Use the source city
+  // records directly so markers remain selectable while the graph worker builds.
+  if (nodesModeEnabled && cityDataReady) {
     const clickX = event.clientX - bounds.left;
     const clickY = event.clientY - bounds.top;
     let nearest: { city: CityRecord; distance: number } | null = null;
-    for (const node of strategicGraph.nodes) {
-      if (node.kind !== "city") continue;
-      const projected = mapProjection([node.longitude, node.latitude]);
+    for (const city of cityRecords) {
+      const projected = mapProjection([city.longitude, city.latitude]);
       if (!projected) continue;
       const x = projected[0] * zoomScale + panX;
       const y = projected[1] * zoomScale + panY;
       const distance = Math.hypot(clickX - x, clickY - y);
-      if (distance <= 11 && (!nearest || distance < nearest.distance)) {
-        const city = cityRecordsById.get(node.id.slice(5));
-        if (city) nearest = { city, distance };
+      // A generous screen-space target makes small markers practical to click.
+      const hitRadius = city.isCapital ? 19 : 16;
+      if (distance <= hitRadius && (!nearest || distance < nearest.distance)) {
+        nearest = { city, distance };
       }
     }
     if (nearest) { selectCity(nearest.city.id, nearest.city.name, nearest.city.country); return; }
