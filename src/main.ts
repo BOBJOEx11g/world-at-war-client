@@ -14,7 +14,7 @@ type BiomeFeature = GeoJSON.Feature<GeoJSON.Geometry, { BIOME_NAME?: string; [ke
 type CityAreaProperties = { name?: string; NAME?: string; scalerank?: number; featurecla?: string; area_sqkm?: number; [key: string]: unknown };
 type CityAreaFeature = GeoJSON.Feature<GeoJSON.Geometry, CityAreaProperties>;
 type LakeFeature = GeoJSON.Feature<GeoJSON.Geometry, { name?: string; NAME?: string; [key: string]: unknown }>;
-type CityRecord = { feature: CityAreaFeature; id: string; name: string; country: string; isCapital: boolean };
+type CityRecord = { id: string; name: string; country: string; longitude: number; latitude: number; isCapital: boolean; scaleRank: number };
 
 const BIOME_COLORS: Record<string, string> = {
   forest: "#7b9873",
@@ -226,7 +226,7 @@ const BIOME_GEOJSON_URL =
   "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Resolve_Ecoregions/FeatureServer/0/query?where=1%3D1&outFields=BIOME_NAME&returnGeometry=true&outSR=4326&maxAllowableOffset=0.02&geometryPrecision=4&resultRecordCount=1000&f=geojson";
 
 type CityWorkerResult =
-  | { type: "success"; areas: CityAreaFeature[]; records: Array<{ index: number; id: string; name: string; country: string; isCapital: boolean }>; indexCells: Array<[string, number[]]>; globalIndices: number[] }
+  | { type: "success"; records: CityRecord[] }
   | { type: "error"; message: string };
 
 async function loadCityGeometry(): Promise<void> {
@@ -236,29 +236,14 @@ async function loadCityGeometry(): Promise<void> {
       worker.terminate();
       const result = event.data;
       if (result.type === "error") { reject(new Error(result.message)); return; }
-      cityAreaFeatures = result.areas as CityAreaFeature[];
-      cityRecords = result.records.map((record) => ({
-        feature: cityAreaFeatures[record.index]!,
-        id: record.id,
-        name: record.name,
-        country: record.country,
-        isCapital: record.isCapital,
-      }));
+      cityRecords = result.records;
       cityRecordsById = new Map(cityRecords.map((record) => [record.id, record] as const));
-      cityRecordByFeature = new WeakMap(cityRecords.map((record) => [record.feature, record] as const));
-      citySpatialIndex = {
-        cells: new Map(result.indexCells.map(([key, indices]) => [key, indices.map((index) => cityAreaFeatures[index]!).filter(Boolean)] as const)),
-        global: result.globalIndices.map((index) => cityAreaFeatures[index]!).filter(Boolean),
-      };
       cityDataReady = true;
       rebuildStrategicGraph();
       resolve();
     };
-    worker.onerror = () => {
-      worker.terminate();
-      reject(new Error("The city-data worker failed before returning its geometry."));
-    };
-    worker.postMessage({ areasUrl: CITY_AREAS_GEOJSON_URL, placesUrl: POPULATED_PLACES_GEOJSON_URL });
+    worker.onerror = () => { worker.terminate(); reject(new Error("The major-city data worker failed.")); };
+    worker.postMessage({ placesUrl: POPULATED_PLACES_GEOJSON_URL });
   });
 }
 
@@ -347,48 +332,6 @@ async function loadCountryGeometry(): Promise<void> {
   }
 }
 
-function ensureCityGeometry(projection: ReturnType<typeof geoNaturalEarth1>): void {
-  if (!webglRenderer || !cityDataReady || projectedCities === cityAreaFeatures) return;
-  const scale = projection.scale();
-  const translate = projection.translate() as [number, number];
-  const key = `${scale}:${translate[0]}:${translate[1]}`;
-  if (cityGeometryWorker && cityGeometryBuildKey === key) return;
-
-  // Cancel stale work after a resize/projection change. Only the newest geometry
-  // is uploaded, and expensive triangulation stays off the UI thread.
-  cityGeometryWorker?.terminate();
-  const worker = new Worker(new URL("./city-geometry-worker.ts", import.meta.url), { type: "module" });
-  cityGeometryWorker = worker;
-  cityGeometryBuildKey = key;
-  worker.onmessage = (event: MessageEvent<
-    | { type: "success"; fill: Float32Array; borders: Float32Array }
-    | { type: "error"; message: string }
-  >) => {
-    worker.terminate();
-    if (cityGeometryWorker !== worker) return;
-    cityGeometryWorker = null;
-    cityGeometryBuildKey = null;
-    if (!mapProjection ||
-        `${mapProjection.scale()}:${mapProjection.translate()[0]}:${mapProjection.translate()[1]}` !== key) return;
-    if (event.data.type === "error") {
-      console.error("City geometry worker failed:", event.data.message);
-      mapStatus.textContent = "Urban detail could not be prepared; the base map remains available.";
-      return;
-    }
-    webglRenderer?.setCityGeometryData(event.data.fill, event.data.borders);
-    projectedCities = cityAreaFeatures;
-    scheduleWebGLRender();
-  };
-  worker.onerror = (error) => {
-    worker.terminate();
-    if (cityGeometryWorker !== worker) return;
-    cityGeometryWorker = null;
-    cityGeometryBuildKey = null;
-    console.error("City geometry worker failed:", error);
-  };
-  worker.postMessage({ areas: cityAreaFeatures, scale, translate });
-}
-
 function renderMap(): void {
   const bounds = mapWrap.getBoundingClientRect();
   viewWidth = Math.max(1, Math.floor(bounds.width));
@@ -423,9 +366,7 @@ function renderMap(): void {
       webglRenderer.setLakeGeometry(lakeFeatures, project);
       projectedLakes = lakeFeatures;
     }
-    if (zoomScale >= 4 && cityDataReady && (projectionChanged || projectedCities !== cityAreaFeatures)) {
-      ensureCityGeometry(projection);
-    } else if (projectionChanged || projectedCities !== cityAreaFeatures) {
+else if (projectionChanged || projectedCities !== cityAreaFeatures) {
       // Prepare urban triangulation asynchronously only when the player zooms in.
       projectedCities = null;
     }
@@ -473,26 +414,14 @@ function selectCity(id: string, name: string, country: string): void {
   selectedCityId = id;
   selectedProvinceId = null;
   selectedName.textContent = name;
-  selectedDetail.textContent = `${name} · ${country}. Urban footprint selected; this is built-up-area geography, not an official municipal boundary.`;
+  selectedDetail.textContent = \`\${name} · \${country}. Major city node.\`;
   selectionCard.classList.add("has-selection");
-  const record = cityRecordsById.get(id);
-  if (webglRenderer && mapProjection) {
-    webglRenderer.setSelection(record?.feature ?? null, (coordinate) => {
-      const point = mapProjection!(coordinate as [number, number]);
-      return point ? [point[0], point[1]] : null;
-    });
-    scheduleWebGLRender();
-  }
-  mapStatus.textContent = `Selected urban area: ${name} · ${country}`;
+  mapStatus.textContent = \`Selected major city: \${name} · \${country}\`;
+  document.dispatchEvent(new CustomEvent("game-location-selected", { detail: { cityId: id, name, country } }));
 }
 
 function selectProvince(id: string): void {
-  const mergedCityId = strategicGraph?.cityIdByReplacedProvinceId.get(id);
-  if (mergedCityId) {
-    const city = cityRecordsById.get(mergedCityId);
-    if (city) { selectCity(city.id, city.name, city.country); return; }
-  }
-  selectedCityId = null;
+selectedCityId = null;
   selectedProvinceId = id;
   const province = allAdministrativeFeatures.find((feature) =>
     String(feature.id ?? feature.properties.shapeID ?? feature.properties.shapeName ?? "unknown") === id
@@ -515,6 +444,7 @@ function selectProvince(id: string): void {
     scheduleWebGLRender();
   }
   mapStatus.textContent = `Selected state/province: ${provinceName} · ${countryName}`;
+  document.dispatchEvent(new CustomEvent("game-location-selected", { detail: { provinceId: id, name: provinceName, country: countryName } }));
 }
 
 let strategicGraphWorker: Worker | null = null;
@@ -550,10 +480,7 @@ function rebuildStrategicGraph(): void {
   };
   strategicGraphWorker.postMessage({
     provinces: allAdministrativeFeatures,
-    cities: cityRecords.map((record) => ({
-      id: record.id, name: record.name, country: record.country,
-      isCapital: record.isCapital, feature: record.feature,
-    })),
+    cities: cityRecords.map((record) => ({ id: record.id, name: record.name, country: record.country, longitude: record.longitude, latitude: record.latitude, isCapital: record.isCapital })),
   });
 }
 
@@ -630,16 +557,25 @@ function drawStrategicGraph(): void {
   }
 
   if (nodesModeEnabled) {
+    const zoomFactor = Math.max(0.78, Math.min(1.9, Math.pow(zoomScale, 0.12)));
     for (const node of strategicGraph.nodes) {
-      if (node.kind === "province" && zoomScale < 2.5) continue;
-      if (node.kind === "city" && zoomScale < 4) continue;
       const point = projected.get(node.id);
-      if (!point || point[0] < -12 || point[0] > width + 12 || point[1] < -12 || point[1] > height + 12) continue;
+      if (!point || point[0] < -14 || point[0] > width + 14 || point[1] < -14 || point[1] > height + 14) continue;
+      const radius = (node.isCapital ? 4.1 : node.kind === "city" ? 2.9 : 1.65) * zoomFactor;
       context.beginPath();
-      context.arc(point[0], point[1], node.isCapital ? 4.5 : node.kind === "city" ? 2.8 : 2.1, 0, Math.PI * 2);
+      if (node.isCapital) {
+        for (let i = 0; i < 10; i++) {
+          const angle = -Math.PI / 2 + i * Math.PI / 5;
+          const r = i % 2 === 0 ? radius * 1.55 : radius * 0.72;
+          const x = point[0] + Math.cos(angle) * r;
+          const y = point[1] + Math.sin(angle) * r;
+          if (i === 0) context.moveTo(x, y); else context.lineTo(x, y);
+        }
+        context.closePath();
+      } else context.arc(point[0], point[1], radius, 0, Math.PI * 2);
       context.fillStyle = node.isCapital ? "#e8ad43" : node.kind === "city" ? "#7b322d" : "#282923";
       context.fill();
-      context.lineWidth = 1;
+      context.lineWidth = Math.max(0.7, Math.min(1.35, zoomFactor));
       context.strokeStyle = "#f0e4c7";
       context.stroke();
     }
@@ -651,10 +587,7 @@ function scheduleWebGLRender(): void {
   webglRenderFrame = requestAnimationFrame(() => {
     webglRenderFrame = 0;
     if (!webglRenderer || webglFailed) return;
-    if (zoomScale >= 4 && cityDataReady && projectedCities !== cityAreaFeatures && mapProjection) {
-      ensureCityGeometry(mapProjection);
-    }
-    webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
+webglRenderer.render(viewWidth, viewHeight, panX, panY, zoomScale);
     drawStrategicGraph();
   });
 }
@@ -767,14 +700,23 @@ mapInput.addEventListener("click", (event: MouseEvent) => {
   if (!longitudeLatitude || !longitudeLatitude.every(Number.isFinite)) return;
   const [longitude, latitude] = longitudeLatitude;
 
-  if (zoomScale >= 4 && cityDataReady) {
-    const candidates = spatialCandidates(citySpatialIndex, longitude, latitude);
-    for (let i = candidates.length - 1; i >= 0; i--) {
-      const feature = candidates[i]!;
-      if (!geoContains(feature, [longitude, latitude])) continue;
-      const record = cityRecordByFeature.get(feature);
-      if (record) { selectCity(record.id, record.name, record.country); return; }
+  if (strategicGraph && nodesModeEnabled) {
+    const clickX = event.clientX - bounds.left;
+    const clickY = event.clientY - bounds.top;
+    let nearest: { city: CityRecord; distance: number } | null = null;
+    for (const node of strategicGraph.nodes) {
+      if (node.kind !== "city") continue;
+      const projected = mapProjection([node.longitude, node.latitude]);
+      if (!projected) continue;
+      const x = projected[0] * zoomScale + panX;
+      const y = projected[1] * zoomScale + panY;
+      const distance = Math.hypot(clickX - x, clickY - y);
+      if (distance <= 11 && (!nearest || distance < nearest.distance)) {
+        const city = cityRecordsById.get(node.id.slice(5));
+        if (city) nearest = { city, distance };
+      }
     }
+    if (nearest) { selectCity(nearest.city.id, nearest.city.name, nearest.city.country); return; }
   }
 
   if (administrativeDataReady) {
@@ -904,11 +846,11 @@ void loadLakeGeometry()
 void loadCityGeometry()
   .then(() => {
     renderMap();
-    mapStatus.textContent = `Urban-area layer ready · ${cityRecords.length.toLocaleString()} selectable footprints matched from ${cityAreaFeatures.length.toLocaleString()} shapes; zoom in to select cities`;
+    mapStatus.textContent = `Major city nodes loaded · ${cityRecords.length.toLocaleString()} cities and capitals`;
   })
   .catch((error) => {
     console.error("World at War urban-area geometry failed to load:", error);
-    mapStatus.textContent = "Urban-area data failed to load; country and province selection still works.";
+    mapStatus.textContent = "Major-city data failed to load; province nodes remain available.";
   });
 void loadAllFirstLevelBoundaries()
   .then((features) => {
