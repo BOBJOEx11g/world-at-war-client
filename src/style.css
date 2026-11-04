@@ -150,3 +150,29 @@ dialog p { color: #716958; font-size: 13px; line-height: 1.6; }
 @media (max-width: 480px) {
   .map-legend { max-width: calc(100% - 16px); max-height: 35%; overflow: auto; flex-wrap: wrap; }
 }
+
+
+/* Research, construction and production panels */
+.game-systems { display:flex; flex-direction:column; gap:10px; margin:0 0 20px; }
+.game-card { padding:12px; border:1px solid #344653; background:#131f2a; }
+.game-card-title { display:flex; align-items:center; justify-content:space-between; gap:8px; color:#f1eee4; font-size:12px; }
+.game-timer { color:#d6b56d; font-size:9px; font-weight:700; letter-spacing:.08em; white-space:nowrap; }
+.game-muted { margin:7px 0 10px; color:#aab7bd; font-size:10px; line-height:1.5; }
+.game-label { display:block; margin:9px 0 5px; color:#aab7bd; font-size:9px; text-transform:uppercase; letter-spacing:.1em; }
+.game-select { width:100%; padding:8px; border:1px solid #53616a; background:#202e38; color:#f1eee4; font:inherit; font-size:11px; }
+.game-list { display:flex; flex-direction:column; gap:7px; margin-top:9px; }
+.game-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:9px; border:1px solid #354653; background:#1a2935; }
+.game-item.is-complete { border-color:#557b65; }
+.game-item-main { min-width:0; }
+.game-item-main strong { display:block; color:#f1eee4; font-size:10px; }
+.game-item-main p { margin:4px 0; color:#aab7bd; font-size:9px; line-height:1.45; }
+.game-item-main small { display:block; margin-top:4px; color:#c5b58b; font-size:8px; line-height:1.4; }
+.game-warning { color:#e2ad79 !important; }
+.game-success { color:#8fc6a0 !important; }
+.game-action { flex:0 0 auto; min-width:65px; padding:7px 8px; border:1px solid #927b4d; background:#3a3428; color:#e8d5a7; font-size:8px; font-weight:700; letter-spacing:.06em; }
+.game-action:disabled { opacity:.38; cursor:not-allowed; }
+.game-status { color:#d6bd80; font-size:9px; line-height:1.5; }
+.production-row { display:grid; grid-template-columns:1fr auto; gap:4px 8px; padding:7px 0; border-bottom:1px solid #344653; color:#e8e4d9; font-size:10px; }
+.production-row:last-child { border-bottom:0; }
+.production-row small { grid-column:1 / -1; color:#9eacb4; font-size:8px; }
+.game-footnote { margin:0; color:#82939d; font-size:8px; line-height:1.5; }
