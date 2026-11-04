@@ -5,7 +5,7 @@ type PlaceProperties = {
   [key: string]: unknown;
 };
 type PlaceFeature = GeoJSON.Feature<GeoJSON.Point, PlaceProperties>;
-type Request = { placesUrl: string };
+type CityDataRequest = { placesUrl: string };
 type CityRecord = {
   id: string; name: string; country: string; longitude: number; latitude: number;
   isCapital: boolean; scaleRank: number;
@@ -13,11 +13,11 @@ type CityRecord = {
 type Result = { type: "success"; records: CityRecord[] };
 
 const scope = self as unknown as {
-  onmessage: ((event: MessageEvent<Request>) => void) | null;
+  onmessage: ((event: MessageEvent<CityDataRequest>) => void) | null;
   postMessage: (message: unknown) => void;
 };
 
-scope.onmessage = async (event: MessageEvent<Request>) => {
+scope.onmessage = async (event: MessageEvent<CityDataRequest>) => {
   try {
     const response = await fetch(event.data.placesUrl, {
       headers: { accept: "application/geo+json, application/json" },
@@ -38,7 +38,8 @@ scope.onmessage = async (event: MessageEvent<Request>) => {
       // Natural Earth ranks 0-4 are its major populated places. Capitals are
       // always included even if their scale rank is lower priority.
       if (!isCapital && scaleRank > 4) continue;
-      const [longitude, latitude] = place.geometry.coordinates;
+      const longitude = place.geometry.coordinates[0] ?? NaN;
+      const latitude = place.geometry.coordinates[1] ?? NaN;
       if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) continue;
       const name = String(props.name ?? props.NAME ?? props.nameascii ?? "").trim();
       if (!name) continue;
