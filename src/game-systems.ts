@@ -87,7 +87,7 @@ export function mountGameSystems():void {
  function renderBuildings(){
   const id=city?.cityId; buildLocation.innerHTML='<strong>'+(city?.name||"No city selected")+'</strong><span class="game-timer">'+(id?"SELECTED":"CITY")+'</span>';
   const active=id?state.construction[id]:null;
-  buildStatus.textContent=active?"Constructing "+(buildings.find(b=>b.id===active.id)?.name||active.id)+" · "+duration(left(active))+" remaining":id?"No active construction in this city.":"Select a major city node to construct buildings.";
+  buildStatus.innerHTML=(active?"Constructing "+(buildings.find(b=>b.id===active.id)?.name||active.id)+" · "+duration(left(active))+" remaining":id?"No active construction in this city.":"Select a major city node to construct buildings there.")+(active?' <button class="game-speed" data-speed="construction">SPEED UP · 1 GOLD / 10s</button>':"");
   const built=id?state.buildings[id]||[]:[];
   buildList.innerHTML=buildings.map(b=>{
    const done=built.includes(b.id), researched=hasTech(b.tech), activeBuild=!!active;
