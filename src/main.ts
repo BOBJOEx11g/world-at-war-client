@@ -409,7 +409,7 @@ else if (projectionChanged || projectedCities !== cityAreaFeatures) {
   loading.hidden = true;
   if (webglFailed) return;
   mapStatus.textContent = administrativeDataReady
-    ? `${countryFeatures.length.toLocaleString()} countries · ${allAdministrativeFeatures.length.toLocaleString()} state/province polygons · ${cityDataReady ? `${cityRecords.length.toLocaleString()} urban footprints` : "loading urban areas…"}`
+    ? `${countryFeatures.length.toLocaleString()} countries · ${allAdministrativeFeatures.length.toLocaleString()} state/province polygons · ${cityDataReady ? `${cityRecords.length.toLocaleString()} major cities` : "loading urban areas…"}`
     : `${countryFeatures.length.toLocaleString()} countries · loading global state/province polygons…`;
 }
 
@@ -417,9 +417,9 @@ function selectCity(id: string, name: string, country: string): void {
   selectedCityId = id;
   selectedProvinceId = null;
   selectedName.textContent = name;
-  selectedDetail.textContent = \`\${name} · \${country}. Major city node.\`;
+  selectedDetail.textContent = `${name} · ${country}. Major city node.`;
   selectionCard.classList.add("has-selection");
-  mapStatus.textContent = \`Selected major city: \${name} · \${country}\`;
+  mapStatus.textContent = `Selected major city: ${name} · ${country}`;
   document.dispatchEvent(new CustomEvent("game-location-selected", { detail: { cityId: id, name, country } }));
 }
 
@@ -472,7 +472,7 @@ function rebuildStrategicGraph(): void {
     }
     strategicGraph = event.data.graph;
     drawStrategicGraph();
-    mapStatus.textContent = `Strategic graph ready · ${strategicGraph.nodes.length.toLocaleString()} nodes · ${strategicGraph.paths.length.toLocaleString()} provisional paths`;
+    mapStatus.textContent = `Strategic network ready · ${strategicGraph.nodes.length.toLocaleString()} nodes · ${strategicGraph.paths.length.toLocaleString()} routes`;
   };
   strategicGraphWorker.onerror = (error) => {
     strategicGraphWorker?.terminate();
