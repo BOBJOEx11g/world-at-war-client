@@ -3,6 +3,7 @@ import { BIOME_TAGS } from "./terrain";
 import { WebGLMapRenderer } from "./webgl-renderer";
 import { loadAllFirstLevelBoundaries, type AdministrativeFeature } from "./admin-boundaries";
 import type { StrategicGraph } from "./world-graph";
+import { mountGameSystems } from "./game-systems";
 import "./style.css";
 
 // Vite resolves this local asset to a cache-busted production URL.
@@ -96,6 +97,8 @@ app.innerHTML = `
   </main>
   <dialog id="about-dialog"><div class="dialog-top"><h2>World at War</h2><button id="close-about" aria-label="Close">×</button></div><p>This is the first interactive map scaffold for a larger grand-strategy project.</p><p>The map is for development and does not yet represent authoritative 2026 borders, playable nations, or province-level territory ownership.</p></dialog>
 `;
+
+mountGameSystems();
 
 const mapWrap = document.querySelector<HTMLDivElement>("#map-wrap")!;
 const mapInput = document.querySelector<HTMLDivElement>("#map-input-layer")!;
