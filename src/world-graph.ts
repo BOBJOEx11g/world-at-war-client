@@ -127,6 +127,17 @@ export function buildStrategicGraph(provinces: AdministrativeFeature[], cities: 
   const cityIdByReplacedProvinceId = new Map<string, string>();
   const provinceById = new Map<string, AdministrativeFeature>();
 
+  // Find each city's containing province once. A national capital replaces
+  // that province's ordinary marker, so it is represented by one star only.
+  const parentProvinceByCityId = new Map<string, AdministrativeFeature | null>();
+  for (const city of cities) {
+    const parent = provinces.find((province) => {
+      try { return geoContains(province, [city.longitude, city.latitude]); } catch { return false; }
+    }) ?? null;
+    parentProvinceByCityId.set(city.id, parent);
+  }
+
+  // Create ordinary province nodes first; capital nodes can replace these below.
   for (const province of provinces) {
     const id = provinceId(province);
     provinceById.set(id, province);
@@ -141,21 +152,37 @@ export function buildStrategicGraph(provinces: AdministrativeFeature[], cities: 
     territoryNodeByProvinceId.set(id, node.id);
   }
 
-  // City points are separate crossroads; they never replace their province node.
   for (const city of cities) {
     if (!Number.isFinite(city.longitude) || !Number.isFinite(city.latitude)) continue;
-    const parent = provinces.find((province) => {
-      try { return geoContains(province, [city.longitude, city.latitude]); } catch { return false; }
-    });
+    const parent = parentProvinceByCityId.get(city.id) ?? null;
     const parentId = parent ? provinceId(parent) : null;
     const node: StrategicNode = {
       id: `city:${city.id}`, kind: "city", name: city.name, country: city.country,
       longitude: city.longitude, latitude: city.latitude, provinceId: parentId,
       isCapital: city.isCapital ?? false,
     };
-    nodes.push(node); nodeById.set(node.id, node);
+
+    if (node.isCapital && parentId) {
+      const replacedNodeId = territoryNodeByProvinceId.get(parentId);
+      if (replacedNodeId) {
+        const replacedNode = nodeById.get(replacedNodeId);
+        const index = nodes.findIndex((candidate) => candidate.id === replacedNodeId);
+        if (index >= 0) nodes.splice(index, 1);
+        nodeById.delete(replacedNodeId);
+        replacedProvinceByCityId.set(node.id, parentId);
+        cityIdByReplacedProvinceId.set(parentId, node.id);
+        territoryNodeByProvinceId.set(parentId, node.id);
+        if (replacedNode) {
+          // The capital star inherits the province's strategic crossroads role.
+          node.name = city.name;
+        }
+      }
+    }
+
+    nodes.push(node);
+    nodeById.set(node.id, node);
     const provinceNodeId = parentId ? territoryNodeByProvinceId.get(parentId) : undefined;
-    if (provinceNodeId) paths.push({
+    if (provinceNodeId && provinceNodeId !== node.id) paths.push({
       id: `city-link:${node.id}:${provinceNodeId}`,
       from: node.id, to: provinceNodeId, kind: "city-link", via: null,
     });
