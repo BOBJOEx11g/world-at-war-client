@@ -100,7 +100,7 @@ export function mountGameSystems():void {
   }));
  }
  function renderProduction(){
-  const gates=[["Infantry","basic-infantry","barracks"],["Tanks","armoured-warfare","tank-plant"],["Aircraft","aviation","aircraft-factory"],["Naval units","naval-engineering","navy-base"],["Secret technologies","experimental-sciences","secret-lab"]];
+  const gates:Array<[string,string,string]>=[["Infantry","basic-infantry","barracks"],["Tanks","armoured-warfare","tank-plant"],["Aircraft","aviation","aircraft-factory"],["Naval units","naval-engineering","navy-base"],["Secret technologies","experimental-sciences","secret-lab"]];
   prodList.innerHTML=gates.map(([name,tech,bld])=>{const research=hasTech(tech),building=hasBuilding(bld),ready=research&&building;return '<div class="production-row"><span>'+name+'</span><strong class="'+(ready?'game-success':'game-warning')+'">'+(ready?'AVAILABLE':'LOCKED')+'</strong><small>'+(research?'Research ✓':'Research —')+' · '+(building?'Building ✓':'Building —')+'</small></div>';}).join("");
  }
  function render(){
