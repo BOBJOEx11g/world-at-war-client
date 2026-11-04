@@ -1,4 +1,4 @@
-import { geoCentroid, geoContains } from "d3-geo";
+import { geoBounds, geoCentroid, geoContains } from "d3-geo";
 import type { Position } from "geojson";
 import type { AdministrativeFeature } from "./admin-boundaries";
 
@@ -57,23 +57,51 @@ function geometryRings(geometry: GeoJSON.Geometry | null): Position[][] {
 function interiorCoordinate(feature: AdministrativeFeature): [number, number] {
   const centroid = geoCentroid(feature) as [number, number];
   if (centroid.every(Number.isFinite) && geoContains(feature, centroid)) return centroid;
-  const rings = geometryRings(feature.geometry);
-  for (const ring of rings) {
-    if (ring.length < 4) continue;
-    let x = 0, y = 0, count = 0;
-    for (const point of ring) {
-      if (typeof point[0] === "number" && typeof point[1] === "number") {
-        x += point[0]; y += point[1]; count++;
+
+  const components: GeoJSON.Geometry[] = [];
+  const collect = (geometry: GeoJSON.Geometry | null): void => {
+    if (!geometry) return;
+    if (geometry.type === "Polygon") components.push(geometry);
+    else if (geometry.type === "MultiPolygon") {
+      for (const coordinates of geometry.coordinates) components.push({ type: "Polygon", coordinates });
+    } else if (geometry.type === "GeometryCollection") {
+      for (const child of geometry.geometries) collect(child);
+    }
+  };
+  collect(feature.geometry);
+
+  // Check each island separately; a province-wide centroid can land in the sea.
+  const candidates = components.map((geometry) => {
+    const component: GeoJSON.Feature<GeoJSON.Geometry> = { type: "Feature", properties: {}, geometry };
+    const bounds = geoBounds(component) as [[number, number], [number, number]];
+    return { component, bounds, area: Math.abs((bounds[1][0] - bounds[0][0]) * (bounds[1][1] - bounds[0][1])) };
+  }).sort((a, b) => b.area - a.area);
+
+  for (const { component, bounds } of candidates) {
+    const center = geoCentroid(component) as [number, number];
+    if (center.every(Number.isFinite) && geoContains(component, center)) return center;
+    const [[west, south], [east, north]] = bounds;
+    for (let divisions = 4; divisions <= 20; divisions += 4) {
+      for (let y = 1; y < divisions; y++) for (let x = 1; x < divisions; x++) {
+        const point: [number, number] = [west + (east - west) * x / divisions, south + (north - south) * y / divisions];
+        if (geoContains(component, point)) return point;
       }
     }
-    if (!count) continue;
-    const candidate: [number, number] = [x / count, y / count];
-    if (geoContains(feature, candidate)) return candidate;
-    const first = ring[0];
-    if (first && typeof first[0] === "number" && typeof first[1] === "number") {
-      const inward: [number, number] = [first[0] * 0.98 + candidate[0] * 0.02, first[1] * 0.98 + candidate[1] * 0.02];
-      if (geoContains(feature, inward)) return inward;
+    for (const ring of geometryRings(component.geometry)) {
+      for (let i = 0; i < ring.length - 1; i++) {
+        const a = ring[i]!, b = ring[i + 1]!;
+        if (typeof a[0] !== "number" || typeof a[1] !== "number" || typeof b[0] !== "number" || typeof b[1] !== "number") continue;
+        const midpoint: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        for (const fraction of [0.05, 0.1, 0.2, 0.35, 0.5, 0.7, 0.9]) {
+          const point: [number, number] = [midpoint[0] + (center[0] - midpoint[0]) * fraction, midpoint[1] + (center[1] - midpoint[1]) * fraction];
+          if (geoContains(component, point)) return point;
+        }
+      }
     }
+  }
+  for (const ring of geometryRings(feature.geometry)) {
+    const first = ring.find((point) => typeof point[0] === "number" && typeof point[1] === "number" && Number.isFinite(point[0]) && Number.isFinite(point[1]));
+    if (first && typeof first[0] === "number" && typeof first[1] === "number") return [first[0], first[1]];
   }
   return centroid;
 }
