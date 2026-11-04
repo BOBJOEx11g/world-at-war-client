@@ -87,6 +87,16 @@ function collectPolygon(rings: Position[][], project: Projection, output: Geomet
   for (const ring of projectedRings) appendRingSegments(ring, output.borders, borderThickness);
 }
 
+/** Build urban-area GPU geometry off the main thread. */
+export function buildCityGeometry(
+  features: Feature<Geometry>[],
+  project: Projection,
+): { fill: Float32Array; borders: Float32Array } {
+  const arrays: GeometryArrays = { fill: [], borders: [] };
+  for (const feature of features) collectGeometry(feature.geometry, project, arrays, 0, 0.8);
+  return { fill: new Float32Array(arrays.fill), borders: new Float32Array(arrays.borders) };
+}
+
 function collectBoundaryPolygon(rings: Position[][], project: Projection, output: BoundaryArrays, tolerance = 0, borderThickness = 1): void {
   for (const ring of rings) {
     const points: ProjectedPoint[] = [];
@@ -307,6 +317,15 @@ export class WebGLMapRenderer {
     }
     this.lakeVertexCount = uploadBuffer(this.gl, this.lakeBuffer, arrays.fill);
     this.lowLakeVertexCount = uploadBuffer(this.gl, this.lowLakeBuffer, low.fill);
+  }
+
+  setCityGeometryData(fill: Float32Array, borders: Float32Array): void {
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.cityBuffer);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, fill, this.gl.STATIC_DRAW);
+    this.cityVertexCount = fill.length / 2;
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.cityBorderBuffer);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, borders, this.gl.STATIC_DRAW);
+    this.cityBorderCount = borders.length / 4;
   }
 
   setCityGeometry(features: Feature<Geometry>[], project: Projection): void {
