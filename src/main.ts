@@ -509,7 +509,6 @@ function drawStrategicGraph(): void {
           graphProjectedPoints.set(node.id, [point[0], point[1]]);
         }
       }
-      const nodesById = new Map(strategicGraph.nodes.map((node) => [node.id, node] as const));
       for (const path of strategicGraph.paths) {
         const from = graphProjectedPoints.get(path.from), to = graphProjectedPoints.get(path.to);
         if (!from || !to) continue;
