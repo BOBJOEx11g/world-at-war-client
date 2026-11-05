@@ -585,24 +585,7 @@ function drawStrategicGraph(): void {
       context.strokeStyle = "#f0e4c7";
       context.stroke();
 
-      const built = builtBuildingsByCity.get(city.id);
-      if (built?.length) {
-        const iconX = x + (10 / zoomScale);
-        const iconY = y - (10 / zoomScale);
-        const iconSize = 7 / zoomScale;
-        context.fillStyle = "#d6b56d";
-        context.strokeStyle = "#f0e4c7";
-        context.lineWidth = 1 / zoomScale;
-        context.beginPath();
-        context.roundRect(iconX - iconSize / 2, iconY - iconSize / 2, iconSize, iconSize, 1.2 / zoomScale);
-        context.fill();
-        context.stroke();
-        context.fillStyle = "#342f27";
-        context.font = "bold " + Math.max(5, 6 / zoomScale) + "px sans-serif";
-        context.textAlign = "center";
-        context.textBaseline = "middle";
-        context.fillText("▦", iconX, iconY + 0.2 / zoomScale);
-      }
+
     }
   } else if (nodesModeEnabled && cityDataReady) {
     const zoomFactor = Math.max(0.9, Math.min(3.2, Math.pow(zoomScale, 0.22)));
@@ -628,6 +611,24 @@ function drawStrategicGraph(): void {
       context.lineWidth = Math.max(0.9, Math.min(1.5, zoomFactor)) / zoomScale;
       context.strokeStyle = "#f0e4c7";
       context.stroke();
+      const built = builtBuildingsByCity.get(city.id);
+      if (built?.length) {
+        const iconX = x + (10 / zoomScale);
+        const iconY = y - (10 / zoomScale);
+        const iconSize = 7 / zoomScale;
+        context.fillStyle = "#d6b56d";
+        context.strokeStyle = "#f0e4c7";
+        context.lineWidth = 1 / zoomScale;
+        context.beginPath();
+        context.roundRect(iconX - iconSize / 2, iconY - iconSize / 2, iconSize, iconSize, 1.2 / zoomScale);
+        context.fill();
+        context.stroke();
+        context.fillStyle = "#342f27";
+        context.font = "bold " + Math.max(5, 6 / zoomScale) + "px sans-serif";
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText("▦", iconX, iconY + 0.2 / zoomScale);
+      }
     }
   }
   context.restore();
