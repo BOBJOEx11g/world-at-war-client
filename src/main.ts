@@ -97,6 +97,7 @@ app.innerHTML = `
 `;
 
 mountGameSystems();
+document.dispatchEvent(new CustomEvent("game-building-state-request"));
 
 const mapWrap = document.querySelector<HTMLDivElement>("#map-wrap")!;
 const mapInput = document.querySelector<HTMLDivElement>("#map-input-layer")!;
@@ -207,6 +208,14 @@ let graphPathCache: Path2D | null = null;
 let nodesModeEnabled = true;
 let pathsModeEnabled = true;
 let selectedCityId: string | null = null;
+const builtBuildingsByCity = new Map<string, string[]>();
+document.addEventListener("game-building-state", (event) => {
+  const detail = (event as CustomEvent<{cityId?: string; built?: string[]}>).detail;
+  if (!detail?.cityId) return;
+  if (detail.built?.length) builtBuildingsByCity.set(detail.cityId, detail.built);
+  else builtBuildingsByCity.delete(detail.cityId);
+  drawStrategicGraph();
+});
 let biomeModeEnabled = false;
 let biomeFeatures: BiomeFeature[] = [];
 let biomeDataPromise: Promise<BiomeFeature[]> | null = null;
@@ -575,6 +584,25 @@ function drawStrategicGraph(): void {
       context.lineWidth = Math.max(0.7, Math.min(1.35, zoomFactor)) / zoomScale;
       context.strokeStyle = "#f0e4c7";
       context.stroke();
+
+      const built = builtBuildingsByCity.get(city.id);
+      if (built?.length) {
+        const iconX = x + (10 / zoomScale);
+        const iconY = y - (10 / zoomScale);
+        const iconSize = 7 / zoomScale;
+        context.fillStyle = "#d6b56d";
+        context.strokeStyle = "#f0e4c7";
+        context.lineWidth = 1 / zoomScale;
+        context.beginPath();
+        context.roundRect(iconX - iconSize / 2, iconY - iconSize / 2, iconSize, iconSize, 1.2 / zoomScale);
+        context.fill();
+        context.stroke();
+        context.fillStyle = "#342f27";
+        context.font = "bold " + Math.max(5, 6 / zoomScale) + "px sans-serif";
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText("▦", iconX, iconY + 0.2 / zoomScale);
+      }
     }
   } else if (nodesModeEnabled && cityDataReady) {
     const zoomFactor = Math.max(0.9, Math.min(3.2, Math.pow(zoomScale, 0.22)));
