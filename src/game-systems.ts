@@ -87,7 +87,7 @@ export function mountGameSystems():void {
   rsList.innerHTML=techs.filter(t=>t.branch===branch).map(t=>{
    const done=hasTech(t.id), missing=t.requires.filter(id=>!hasTech(id)), alreadyActive=active.some(task=>task.id===t.id), blocked=active.length>=2||alreadyActive||done||missing.length>0;
    const req=missing.map(id=>techs.find(x=>x.id===id)?.name||id).join(", ");
-   return '<article class="game-item '+(done?'is-complete':'')+'"><div class="game-item-main"><strong>'+t.name+'</strong><p>'+t.description+'</p><small>'+cost(t.cost)+' · '+duration(t.seconds)+'</small>'+(req?'<small class="game-warning">Requires: '+req+'</small>':'')+'</div><button class="game-action" data-tech="'+t.id+'" '+(blocked||!afford(t.cost)?'disabled':'')+'>'+(done?'DONE':active?.id===t.id?'ACTIVE':'RESEARCH')+'</button></article>';
+   return '<article class="game-item '+(done?'is-complete':'')+'"><div class="game-item-main"><strong>'+t.name+'</strong><p>'+t.description+'</p><small>'+cost(t.cost)+' · '+duration(t.seconds)+'</small>'+(req?'<small class="game-warning">Requires: '+req+'</small>':'')+'</div><button class="game-action" data-tech="'+t.id+'" '+(blocked||!afford(t.cost)?'disabled':'')+'>'+(done?'DONE':alreadyActive?'ACTIVE':'RESEARCH')+'</button></article>';
   }).join("");
   rsList.querySelectorAll<HTMLButtonElement>("[data-tech]").forEach(btn=>btn.addEventListener("click",()=>{
    const t=techs.find(x=>x.id===btn.dataset.tech);if(!t||state.research.length>=2||state.research.some(task=>task.id===t.id)||hasTech(t.id)||t.requires.some(id=>!hasTech(id))||!afford(t.cost))return;
