@@ -73,6 +73,7 @@ app.innerHTML = `
         <div class="selection-icon">◎</div>
         <div><h2 id="selected-name">Select a province or city</h2><p id="selected-detail">Click a province node or a major-city marker.</p></div>
       </section>
+      <div class="sidebar-overview" id="sidebar-overview">
       <div class="section-heading">PROJECT STATUS</div>
       <ul class="status-list">
         <li><span class="status-check">✓</span><span>Client scaffold</span><span class="status-word">READY</span></li>
@@ -85,6 +86,7 @@ app.innerHTML = `
       <div class="biome-tags" aria-label="Supported biome tags">${BIOME_TAGS.map((biome) => `<span class="biome-tag">${biome}</span>`).join("")}</div>
       <p class="biome-note">Toggle the biome map to view broad ecological regions. This is a reference overlay, not yet province-level game terrain data.</p>
       <div class="sidebar-note"><strong>*Map-data note</strong><p>Countries use Natural Earth Admin 0 geometry; states/provinces use Natural Earth 1:10m Admin 1. Major-city nodes use Natural Earth 1:10m populated places (scale ranks 0–4), plus all national capitals. Lakes use Natural Earth 1:10m lake polygons. Optional biome overlay: RESOLVE Ecoregions 2017, CC BY 4.0.</p></div>
+      </div>
       <footer>WORLD AT WAR <span>·</span> EARLY DEVELOPMENT</footer>
     </aside>
     <section class="map-panel" aria-label="Interactive world map">
