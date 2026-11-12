@@ -51,8 +51,18 @@ export function mountGameSystems():void {
  const sidebar=document.querySelector<HTMLElement>(".sidebar"); if(!sidebar)return;
  let state=load(), city:Location|null=null, branch:Branch="Land Warfare";
  const panel=document.createElement("section"); panel.className="game-systems";
- panel.innerHTML='<div class="section-heading">RESEARCH & DEVELOPMENT <span class="live-label">GLOBAL · 2 SLOTS</span></div><div class="game-card"><div class="game-card-title"><strong>Global research queue</strong><span id="rs-timer" class="game-timer">0 / 2 ACTIVE</span></div><p id="rs-status" class="game-muted">Two technologies can be researched at the same time across the whole world.</p><label class="game-label">Research branch</label><select id="rs-branch" class="game-select"></select><div id="rs-active" class="game-list"></div><div id="rs-list" class="game-list"></div></div><div class="section-heading">CITY CONSTRUCTION <span class="live-label">LOCAL · 1 SLOT / CITY</span></div><div class="game-card"><div id="build-location" class="game-card-title"><strong>No city selected</strong><span class="game-timer">CITY</span></div><p class="game-muted">Select a major city on the map to construct buildings there.</p><div id="build-status" class="game-status">No active construction.</div><div id="build-list" class="game-list"></div></div><div class="section-heading">PRODUCTION REQUIREMENTS</div><div class="game-card"><p class="game-muted">Both research and at least one matching building are required.</p><div id="prod-list" class="game-list"></div></div><p class="game-footnote">Prototype economy: saved in this browser. Timers continue while closed. Starting balances, costs and times are provisional.</p>';
+ panel.innerHTML='<nav class="sidebar-tabs" aria-label="Sidebar sections"><button type="button" class="sidebar-tab is-active" data-sidebar-tab="overview" aria-pressed="true">OVERVIEW</button><button type="button" class="sidebar-tab" data-sidebar-tab="province" aria-pressed="false">PROVINCE ADMIN</button><button type="button" class="sidebar-tab" data-sidebar-tab="research" aria-pressed="false">RESEARCH</button></nav><section class="sidebar-tab-panel" data-sidebar-panel="province" hidden><div class="section-heading">BUILDINGS <span class="live-label">LOCAL · 1 SLOT / CITY</span></div><div class="game-card"><div id="build-location" class="game-card-title"><strong>No city selected</strong><span class="game-timer">CITY</span></div><p class="game-muted">Select a major city on the map to construct buildings there. A building requires its research first.</p><div id="build-status" class="game-status">No active construction.</div><div id="build-list" class="game-list"></div></div><div class="section-heading">UNIT PRODUCTION</div><div class="game-card"><p class="game-muted">Research and a matching building are both required before a unit type becomes available.</p><div id="prod-list" class="game-list"></div></div></section><section class="sidebar-tab-panel" data-sidebar-panel="research" hidden><div class="section-heading">RESEARCH & DEVELOPMENT <span class="live-label">GLOBAL · 2 SLOTS</span></div><div class="game-card"><div class="game-card-title"><strong>Global research queue</strong><span id="rs-timer" class="game-timer">0 / 2 ACTIVE</span></div><p id="rs-status" class="game-muted">Two technologies can be researched at the same time across the whole world.</p><label class="game-label">Research branch</label><select id="rs-branch" class="game-select"></select><div id="rs-active" class="game-list"></div><div id="rs-list" class="game-list"></div></div><p class="game-footnote">Research is saved in this browser. Timers continue while closed. Starting balances, costs and times are provisional.</p></section>';
  const selected=sidebar.querySelector("#selection-card"); if(selected?.nextSibling)sidebar.insertBefore(panel,selected.nextSibling);else sidebar.append(panel);
+ const overview=sidebar.querySelector<HTMLElement>("#sidebar-overview");
+ const tabButtons=[...panel.querySelectorAll<HTMLButtonElement>("[data-sidebar-tab]")];
+ const tabPanels=[...panel.querySelectorAll<HTMLElement>("[data-sidebar-panel]")];
+ function activateSidebarTab(tab:string){
+  tabButtons.forEach(button=>{const active=button.dataset.sidebarTab===tab;button.classList.toggle("is-active",active);button.setAttribute("aria-pressed",String(active));});
+  tabPanels.forEach(section=>{section.hidden=section.dataset.sidebarPanel!==tab;});
+  if(overview)overview.hidden=tab!=="overview";
+ }
+ tabButtons.forEach(button=>button.addEventListener("click",()=>activateSidebarTab(button.dataset.sidebarTab||"overview")));
+ activateSidebarTab("overview");
  const branchSelect=panel.querySelector<HTMLSelectElement>("#rs-branch")!;
  const rsList=panel.querySelector<HTMLDivElement>("#rs-list")!;
  const rsStatus=panel.querySelector<HTMLParagraphElement>("#rs-status")!;
@@ -112,7 +122,12 @@ export function mountGameSystems():void {
    return '<article class="game-item '+(done?'is-complete':'')+'"><div class="game-item-main"><strong>'+b.name+'</strong><p>'+b.description+'</p><small>'+cost(b.cost)+' · '+duration(b.seconds)+'</small>'+(!researched?'<small class="game-warning">Research first: '+techName+'</small>':'')+(done?'<small class="game-success">Built in this city</small>':'')+'</div><button class="game-action" data-building="'+b.id+'" '+(!id||activeBuild||done||!researched||!afford(b.cost)?'disabled':'')+'>'+(done?'BUILT':'BUILD')+'</button></article>';
   }).join("");
   buildList.querySelectorAll<HTMLButtonElement>("[data-building]").forEach(btn=>btn.addEventListener("click",()=>{
-   const b=buildings.find(x=>x.id===btn.dataset.build);if(!b||!id||state.construction[id]||(state.buildings[id]||[]).includes(b.id)||!hasTech(b.tech)||!afford(b.cost))return;
+   const b=buildings.find(x=>x.id===btn.dataset.build);if(!b)return;
+   if(!id){buildStatus.textContent="Select a major city on the map first.";return;}
+   if(state.construction[id]){buildStatus.textContent="This city already has construction in progress.";return;}
+   if((state.buildings[id]||[]).includes(b.id)){buildStatus.textContent="This building is already complete in this city.";return;}
+   if(!hasTech(b.tech)){buildStatus.textContent="Research "+(techs.find(t=>t.id===b.tech)?.name||b.tech)+" before building this.";return;}
+   if(!afford(b.cost)){buildStatus.textContent="Not enough resources to build "+b.name+".";return;}
    pay(b.cost);state.construction[id]={id:b.id,endsAt:Date.now()+b.seconds*1000};save();render();
   }));
  }
@@ -151,7 +166,7 @@ export function mountGameSystems():void {
   if(id) document.dispatchEvent(new CustomEvent("game-building-state",{detail:{cityId:id,built:state.buildings[id]||[]}}));
  }
  branchSelect.addEventListener("change",()=>{branch=branchSelect.value as Branch;renderResearch();});
- document.addEventListener("game-location-selected",event=>{const d=(event as CustomEvent<Location>).detail;city=d?.cityId?d:null;renderBuildings();});
+ document.addEventListener("game-location-selected",event=>{const d=(event as CustomEvent<Location>).detail;city=d?.cityId?d:null;renderBuildings();if(d?.cityId)buildStatus.textContent="Selected "+(d.name||"city")+". Choose a building below.";});
  document.addEventListener("game-speed-up",event=>{
   const amount=Number((event as CustomEvent<number>).detail);if(!Number.isFinite(amount)||amount<=0||state.wallet.gold<amount)return;
   const ms=amount*10000;
