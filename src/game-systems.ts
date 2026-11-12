@@ -70,7 +70,14 @@ export function mountGameSystems():void {
  function cost(costs:Partial<Wallet>){return keys.filter(k=>(costs[k]||0)>0).map(k=>k.toUpperCase()+" "+n(costs[k]!)).join(" · ");}
  function refreshTasks():boolean {
   let changed=false;
-  if(state.research&&left(state.research)===0){if(!hasTech(state.research.id))state.researched.push(state.research.id);state.research=null;changed=true;}
+  const remaining:Task[]=[];
+  state.research.forEach(task=>{
+   if(left(task)===0){
+    if(!hasTech(task.id))state.researched.push(task.id);
+    changed=true;
+   } else remaining.push(task);
+  });
+  state.research=remaining;
   Object.entries(state.construction).forEach(([id,task])=>{if(left(task)===0){const list=state.buildings[id]||[];if(!list.includes(task.id))list.push(task.id);state.buildings[id]=list;delete state.construction[id];changed=true;}});
   if(changed)save();
   return changed;
